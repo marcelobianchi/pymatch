@@ -35,21 +35,46 @@ class Serie(object):
         self.x     = None
         self.y     = None
         self.s     = None
+        self.xm    = None
+        self.ym    = None
+        self.sm    = None
+        self.ismatched = False
         self.label = 'Noname' if label is None else label
+        
+        self.x, self.y, self.s = self.__read(self.filename)
+        
+        try:
+            filename = self.filename + ".new"
+            self.xm, self.ym, self.sm = self.__read(filename)
+            self.ismatched = True
+        except:
+            pass
+    
+    @staticmethod
+    def __read(filename):
+        if not os.path.isfile(filename):
+            raise Exception("File does not exists !")
         
         data = np.loadtxt(filename, unpack=True)
         if data.shape[0] == 2:
-            self.x, self.y = data
-            self.s = None
+            x, y = data
+            s = None
         else:
-            self.s,self.x,self.y = data
+            s,x,y = data
+        return x,y,s
     
     def limits(self, start = None, end = None):
+        '''
+        Sets limits of use for the data serie by match
+        '''
         self.start = start
         self.end   = end
         return self
     
     def write(self, filename = None):
+        '''
+        Save this data serie
+        '''
         filename = filename if filename is not None else self.filename
         
         if self.s is None:
@@ -63,6 +88,13 @@ class Serie(object):
         return True
     
     def normalize(self, to = None):
+        '''
+        Normalize this serie between -0.5 and 0.5, or 
+        if to is an Serie instance match this one to the other.
+        '''
+        if not isinstance(to, Serie):
+            raise Exception("Bad destination Serie instance on to variable !")
+        
         s = 1.0 if to == None else np.max(to.y) - np.min(to.y)
         l = -0.5 if to == None else np.min(to.y)
 
@@ -71,8 +103,34 @@ class Serie(object):
         self.y += l
 
         return self
-
+    
+    def plotcomp(self, other):
+        '''
+        Make a comparison plot of matched data series.
+        Other is another Serie instance that was matched to self
+        '''
+        if not isinstance(other, Serie):
+            raise Exception("Need the other serie that was matched to compare !")
+        
+        if not self.ismatched or not other.ismatched:
+            raise Exception("Both series needs to be Matched !")
+        
+        plt.subplot(2,1,1)
+        plt.plot(self.x, self.y, label=self.filename)
+        plt.plot(other.xm, other.ym, label=other.filename)
+        plt.axvspan(self.start, self.end, 0.1, 0.2, alpha=0.3, color='80', label='Used part from %s' % self.filename)
+        plt.legend()
+        
+        plt.subplot(2,1,2)
+        plt.plot(self.xm, self.ym, label=self.filename)
+        plt.plot(other.x, other.y, label=other.filename)
+        plt.axvspan(other.start, other.end, 0.1, 0.2, alpha=0.3, color='80', label='Used part from %s' % other.filename)
+        plt.legend()
+    
     def plot(self):
+        '''
+        Plot this data serie and its parameters
+        '''
         m1 = self.x.min() if self.start is None else self.start
         m2 = self.x.max() if self.end is None else self.end
         plt.axvspan(m1, m2, 0.05, 0.15, alpha=0.75, color="0.6", label='Used Segment')
