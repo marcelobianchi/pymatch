@@ -103,8 +103,33 @@ class MatchConfFile(object):
         return v
 
     def __init__(self, filename):
+        self.series1 = None
+        self.begin1  = None
+        self.end1    = None
+        self.numintervals1 = None
+        self.series2 = None
+        self.begin2  = None
+        self.end2    = None
+        self.numintervals2 = None
+        self.nomatch      = None
+        self.speedpenalty = None
+        self.targetspeed  = None
+        self.speedchange  = None
+        self.tiepenalty   = None
+        self.gappenalty   = None
+        self.speeds = None
+        self.tiefile = None
+        self.series1gaps = None
+        self.series2gaps = None
+        self.matchfile   = None
+        self.logfile     = None
         self.filename = filename
-        self.__read()
+        
+        if os.path.isfile(filename):
+            self.__read()
+        else:
+            self.matchfile = self.filename.replace(".conf","") + ".match"
+            self.logfile = self.filename.replace(".conf","") + ".log"
 
     def __write(self, fio, variable):
         v = getattr(self, variable)
@@ -129,18 +154,46 @@ class MatchConfFile(object):
 
         fio.readline()
 
-        self.nomatch      = float(self.__pkv(fio, "nomatch"))
-        self.speedpenalty = float(self.__pkv(fio, "speedpenalty"))
-        self.targetspeed  = self.__pkv(fio, "targetspeed")
-        self.speedchange  = float(self.__pkv(fio, "speedchange"))
-        self.tiepenalty   = float(self.__pkv(fio, "tiepenalty"))
-        self.gappenalty   = float(self.__pkv(fio, "gappenalty"))
+        try:
+            self.nomatch      = float(self.__pkv(fio, "nomatch"))
+        except:
+            print "Failed to read Nomatch"
+
+        try:
+            self.speedpenalty = float(self.__pkv(fio, "speedpenalty"))
+        except:
+            print "Failed to read SpeedPenalty"
         
+        try:
+            self.targetspeed  = self.__pkv(fio, "targetspeed")
+        except:
+            print "Failed to read TargetSpeed"
+
+        
+        try:
+            self.speedchange  = float(self.__pkv(fio, "speedchange"))
+        except:
+            print "Failed to read Speedchange"
+
+        
+        try:
+            self.tiepenalty   = float(self.__pkv(fio, "tiepenalty"))
+        except:
+            print "Failed to read Tiepenalty"
+        
+        try:
+            self.gappenalty   = float(self.__pkv(fio, "gappenalty"))
+        except:
+            pass
+
         fio.readline()
 
-        speeds = self.__pkv(fio, "speeds")
-        if speeds:
-            self.speeds = speeds.split(",")
+        try:
+            speeds = self.__pkv(fio, "speeds")
+            if speeds:
+                self.speeds = speeds.split(",")
+        except:
+            speeds = []
 
         fio.readline()
 
@@ -164,7 +217,10 @@ class MatchConfFile(object):
 
         fio.close()
 
-    def write(self, filename):
+    def write(self, filename  = None):
+        if filename is None:
+            filename = self.filename
+        
         fio = open(filename, "w")
         
         self.__write(fio, "series1")
@@ -204,6 +260,24 @@ class MatchConfFile(object):
         fio.close()
 
         self.filename = filename
+
+    def setSeries(self, which, filename, begin, end, nintervals):
+        if not os.path.isfile(filename):
+            raise Exception("Not a file ! ")
+
+        if which == 1:
+            self.series1 = filename
+            self.begin1 = float(begin) 
+            self.end1   = float(end)
+            self.numintervals1 = int(nintervals)
+        elif which == 2:
+            self.series2 = filename
+            self.begin2 = float(begin) 
+            self.end2   = float(end)
+            self.numintervals2 = int(nintervals)
+        else:
+            raise Exception("time series not know !")
+        return self
 
     def clean(self):
         if os.path.isfile(self.logfile):   os.unlink(self.logfile)
@@ -322,7 +396,7 @@ class MatchConfFile(object):
         print "%13s" % "Series:", self.series1, "begin:", self.begin1, "end:", self.end1, "num. Intervals:", self.numintervals1
         print "%13s" % "Series:", self.series2, "begin:", self.begin2, "end:", self.end2, "num. Intervals:", self.numintervals2
         print ""
-        print "%13s" % "speeds:", ",".join(self.speeds)
+        print "%13s" % "speeds:", ",".join(self.speeds) if self.speeds else "-"
         print ""
         print " ** Penalties **"
         print "%13s" % "nomatch:", self.nomatch
