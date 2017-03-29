@@ -1,0 +1,41 @@
+diff -Naur Match-2.3.1/Match/config.cc target/Match/config.cc
+--- Match-2.3.1/Match/config.cc	2012-05-11 18:50:19.000000000 -0300
++++ target/Match/config.cc	2017-03-28 09:08:18.031457964 -0300
+@@ -33,6 +33,7 @@
+ #include <iostream>
+ #include <stdio.h>
+ #include "config.hh"
++#include <stdlib.h>
+ 
+ namespace std {}
+ using namespace std;
+diff -Naur Match-2.3.1/Match/match.cc target/Match/match.cc
+--- Match-2.3.1/Match/match.cc	2012-05-11 18:50:19.000000000 -0300
++++ target/Match/match.cc	2017-03-28 09:06:58.175457973 -0300
+@@ -38,8 +38,13 @@
+ #include "config.hh"
+ #include "normalize.hh"
+ #include "assert.h"
++#include <string.h>
++
++#include <string.h>
++#include <stdlib.h>
+ 
+ namespace std {}
++
+ using namespace std;
+ 
+ #define TIE_NO_MATCH_PEN 1.0e6
+diff -Naur Match-2.3.1/Match/series.hh target/Match/series.hh
+--- Match-2.3.1/Match/series.hh	2012-05-11 18:50:20.000000000 -0300
++++ target/Match/series.hh	2017-03-28 09:07:49.803457967 -0300
+@@ -42,6 +42,9 @@
+ #include <stdexcept>
+ #include "assert.h"
+ 
++#include <stdlib.h>
++#include <string.h>
++
+ namespace std {}
+ using namespace std;
+ 
