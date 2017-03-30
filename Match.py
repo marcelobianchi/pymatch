@@ -92,7 +92,7 @@ class Serie(object):
         Normalize this serie between -0.5 and 0.5, or 
         if to is an Serie instance match this one to the other.
         '''
-        if not isinstance(to, Serie):
+        if to is not None and not isinstance(to, Serie):
             raise Exception("Bad destination Serie instance on to variable !")
         
         s = 1.0 if to == None else np.max(to.y) - np.min(to.y)
