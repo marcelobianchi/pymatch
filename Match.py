@@ -557,8 +557,13 @@ class MatchConfFile(object):
 
             self.write("lala.conf")
             results = self.run()
-            _, x1, y1 = np.loadtxt(self.series1, unpack=True)
-            _, x2, y2 = np.loadtxt(self.series2 + ".new" , unpack=True)
+            
+            sa = self.getSeries(1)
+            sb = self.getSeries(2)
+            x1 = sa.x
+            y1 = sa.y
+            x2 = sb.xm
+            y2 = sb.ym
             xnew = np.linspace(min(x1), max(x2), 2000)
             y1n = np.interp(xnew, x1, y1)
             y2n = np.interp(xnew, x2, y2)
