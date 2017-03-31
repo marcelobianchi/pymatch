@@ -30,7 +30,7 @@ class Serie(object):
     def __init__(self, filename, label = None):
         self.original_filename = filename
         self.filename = filename
-        self.start = None
+        self.begin = None
         self.end   = None
         self.x     = None
         self.y     = None
@@ -64,22 +64,48 @@ class Serie(object):
             s,x,y = data
         return x,y,s
     
-    def limits(self, start = None, end = None):
+    def setLimits(self, begin = None, end = None):
         '''
         Sets data series usefull limits
         '''
-        self.start = start
+        self.begin = begin
         self.end   = end
         return self
+    
+    def _window(self, var):
+        s = self.begin
+        e = self.end
+
+        if s == None and e == None:
+            return var
+        
+        if s == None and e != None:
+            return var[ self.x < e ]
+        
+        if s != None and e == None:
+            return var[ self.x > s ]
+
+        return var[ (self.x > s) & (self.x < e) ]
     
     @property
     def ties(self):
         return self._ties.copy()
     
+    @property
+    def x_window(self):
+        return self._window(self.x)
+    
+    @property
+    def y_window(self):
+        return self._window(self.y)
+    
     def setTie(self, label, value):
+        if value < self.x.min() or value > self.x.max():
+            raise Exception("Bad Value, outside of series definition range.")
+
         self._ties[label] = value
         return self
-
+    
     def write(self, filename = None):
         '''
         Save this data serie
@@ -127,24 +153,41 @@ class Serie(object):
         plt.subplot(2,1,1)
         plt.plot(self.x, self.y, label=self.filename)
         plt.plot(other.xm, other.ym, label=other.filename)
-        plt.axvspan(self.start, self.end, 0.1, 0.2, alpha=0.3, color='80', label='Used part from %s' % self.filename)
+        plt.axvspan(self.begin, self.end, 0.1, 0.2, alpha=0.3, color='80', label='Used part from %s' % self.filename)
         plt.legend()
         
         plt.subplot(2,1,2)
         plt.plot(self.xm, self.ym, label=self.filename)
         plt.plot(other.x, other.y, label=other.filename)
-        plt.axvspan(other.start, other.end, 0.1, 0.2, alpha=0.3, color='80', label='Used part from %s' % other.filename)
+        plt.axvspan(other.begin, other.end, 0.1, 0.2, alpha=0.3, color='80', label='Used part from %s' % other.filename)
         plt.legend()
     
     def plot(self):
         '''
         Plot this data serie and its parameters
         '''
-        m1 = self.x.min() if self.start is None else self.start
+        m1 = self.x.min() if self.begin is None else self.begin
         m2 = self.x.max() if self.end is None else self.end
         plt.axvspan(m1, m2, 0.05, 0.15, alpha=0.75, color="0.6", label='Used Segment')
         plt.plot(self.x, self.y, label='Series %s [%s]' % (self.label if self.label else '-',self.filename))
         plt.legend()
+    
+    def report(self):
+        print "Serie: Label: %s Filename: %s Original Filename: %s" %(self.label, self.filename, self.original_filename)
+        print "\nStatistics:        %8s / %-8s"  % ("Full", "Window")
+        print " Number of Points: %8d / %-8d" % (len(self.x), len(self.x_window))
+        print "            x-Min: %8f / %-8f" % (self.x.min(), self.x_window.max())
+        print "            y-Min: %8f / %-8f" % (self.y.min(), self.y_window.min())
+        print "            y-Max: %8f / %-8f" % (self.y.max(), self.y_window.max())
+        print "           y-Mean: %8f / %-8f" % (self.y.mean(), self.y_window.mean())
+        print "          y-StdEv: %8f / %-8f" % (self.y.std(), self.y_window.std())
+        print "\nAssociated Information:"
+        print "   Begin is: %s and End is: %s" % (self.begin, self.end)
+        print "   Total of %d tie points." % (len(self.ties))
+        i = 0
+        for k,x in self.ties.iteritems():
+            print "      Tie #%d, Label: %s Position: %s" % (i, k, x)
+            i += 1
 
 class MatchConfFile(object):
     ##
@@ -397,6 +440,33 @@ class MatchConfFile(object):
             raise Exception("time series not know !")
         return self
     
+    def guessParameters(self):
+        '''
+        This method try to guess the values for each penalties, algorithm 
+        is taken directly from Matlab code from Lorraine's !! 
+            -- Need still to check numbers !
+        Don't blame me on that !
+        '''
+        sa = self.getSeries(1)
+        sb = self.getSeries(2)
+
+        da = sa.y_window
+        db = sb.y_window
+
+        mean1 = np.mean(da)
+        mean2 = np.mean(db)
+        std1  = np.std(da)
+        std2  = np.std(db)
+        m = 2*np.abs(mean1-mean2)
+        s = max(std1, std2)**2
+        d = max(db) - min(db) ## This id done with f2 called "target" in matlab
+        
+        self.nomatch      = round(150.0*(s+m**2))/10.0
+        self.speedpenalty = round(350.0*(0.2*s+m**2))/100.0
+        self.speedchange  = round(350.0*(0.15*s+m**2))/100.0
+        self.tiepenalty   = round(5000.0*s/d+m**2.0)
+        self.gappenalty   = round(1000.0*s/d+0.8*m**2)
+
     def clean(self):
         if os.path.isfile(self.logfile):   os.unlink(self.logfile)
         if os.path.isfile(self.matchfile): os.unlink(self.matchfile)
@@ -410,11 +480,11 @@ class MatchConfFile(object):
     def getSeries(self, which):
         if which == 1:
             s = Serie(self.series1, '#1')
-            s.limits(self.begin1, self.end1)
+            s.setLimits(self.begin1, self.end1)
             return s
         elif which == 2:
             s = Serie(self.series2, '#2')
-            s.limits(self.begin2, self.end2)
+            s.setLimits(self.begin2, self.end2)
             return s
         else:
             raise Exception("No such serie")
