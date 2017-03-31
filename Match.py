@@ -18,6 +18,7 @@
 import numpy as np
 import os, re
 from matplotlib import pyplot as plt
+from mhlib import isnumeric
 
 class Serie(object):
     '''
@@ -488,7 +489,7 @@ class MatchConfFile(object):
             return s
         else:
             raise Exception("No such serie")
-    
+
     def run(self, autosave = False):
         if not os.path.isfile(self.filename):
             raise Exception("Filename '%s' Not Found." % self.filename)
@@ -617,3 +618,45 @@ class MatchConfFile(object):
         print "%13s" % "tiefile:", self.tiefile
         print "%13s" % "matchfile:", self.matchfile
         print "%13s" % "logfile:", self.logfile
+
+def create_tie(label, series_list, ages_list):
+    label = str(label)
+    
+    series_list = [ series_list ] if not isinstance(series_list, list) else series_list
+    ages_list = [ ages_list ] if not isinstance(ages_list, list) else ages_list
+    
+    print ages_list
+    
+    for s in series_list:
+        if not isinstance(s, Serie):
+            raise Exception("Object in series_list is not of type Serie")
+
+    for a in ages_list:
+        if not isnumeric(str(a)):
+            raise Exception("Object in agest_list is not a Number")
+
+    for s,a in zip(series_list, ages_list):
+        s.setTie(label, a)
+    
+    return
+
+def show_tie(label,  series_list):
+    series_list = [series_list] if not isinstance(series_list, list) else series_list
+
+    for s in series_list:
+        if not isinstance(s, Serie):
+            raise Exception("Object in series_list is not of type Serie")
+
+    print "%15s  " % " ",
+    for s in series_list:
+        print "%-10s" % s.label,
+    print ""
+
+    print "%15s: " % label,
+    for s in series_list:
+        try:
+            print "%-10s" % s.ties[label],
+        except:
+            print "%-10s" % "-",
+    print ""
+    return
