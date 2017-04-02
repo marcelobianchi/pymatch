@@ -123,6 +123,13 @@ class Serie(object):
         
         return True
     
+    def normalizeStd(self):
+        m = self.y.mean()
+        s = self.y.std()
+        self.y = (self.y - m) / s
+    
+        return self
+    
     def normalize(self, to = None):
         '''
         Normalize this serie between -0.5 and 0.5, or 
