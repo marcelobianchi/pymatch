@@ -266,7 +266,7 @@ class MatchConfFile(object):
         if value.find(":") == -1:
             raise Exception("Invalid value of target speed '%s'" % value)
         
-        if self._speeds and value not in self._speeds:
+        if value not in self._speeds:
             raise Exception("Target speed is not in speeds !!")
         
         self._targetspeed = value
@@ -331,10 +331,10 @@ class MatchConfFile(object):
             print "Failed to read SpeedPenalty"
         
         try:
-            self.targetspeed  = self.__pkv(fio, "targetspeed")
+            targetspeed  = self.__pkv(fio, "targetspeed")
         except:
             print "Failed to read TargetSpeed"
-        
+            targetspeed = None
         
         try:
             self.speedchange  = float(self.__pkv(fio, "speedchange"))
@@ -349,7 +349,7 @@ class MatchConfFile(object):
         try:
             self.gappenalty   = float(self.__pkv(fio, "gappenalty"))
         except:
-            pass
+            print "Failed to read Gappenalty"
         
         fio.readline()
         
@@ -358,7 +358,8 @@ class MatchConfFile(object):
             if speeds:
                 self.speeds = speeds.split(",")
         except:
-            speeds = []
+            print "Failed to read Speeds"
+            self.speeds = []
         
         fio.readline()
         
@@ -379,17 +380,55 @@ class MatchConfFile(object):
 
         self.matchfile   = self.__pkv(fio, "matchfile")
         self.logfile     = self.__pkv(fio, "logfile")
-
-        if self.targetspeed not in self.speeds:
-            print "Target speed is invalid, resetting it !"
-            self.targetspeed = None
-            
+        
+        # Last check of target speed
+        self.targetspeed = targetspeed
+        
         fio.close()
     
-    def write(self, filename  = None):
+    def write(self, filename  = None, regenerate_matchlogfiles = False):
         if filename is None:
             filename = self.filename
         
+        ## Check consistency of data before write !
+        if self.series1 == None or not os.path.isfile(self.series1):
+            raise Exception("Series1: '%s', is not defined or file does not exists." % self.series1)
+        
+        if self.series2 == None or not os.path.isfile(self.series2):
+            raise Exception("Series2: '%s', is not defined or file does not exists." % self.series2)
+        
+        s1 = Serie(self.series1)
+        if self.begin1 == None:
+            self.begin1 = s1.x.min()
+            print "Setting series1 begin to %s" % self.begin1
+
+        if self.end1 == None:
+            self.end1 = s1.x.max()
+            print "Setting series1 end to %s" % self.end1
+
+        if self.numintervals1 == None:
+            self.numintervals1 = len(s1.x) // 7
+            print "Setting series1 numintervals to %s" % self.numintervals1
+
+        s2 = Serie(self.series2)
+        if self.begin2 == None:
+            self.begin2 = s2.x.min()
+            print "Setting series2 begin to %s" % self.begin2
+
+        if self.end2 == None:
+            self.end2 = s2.x.max()
+            print "Setting series2 end to %s" % self.end2
+
+        if self.numintervals2 == None:
+            self.numintervals2 = len(s2.x) // 7
+            print "Setting series2 numintervals to %s" % self.numintervals2
+
+        if regenerate_matchlogfiles or self.matchfile == None or self.matchfile == "":
+            self.matchfile = self.filename.replace(".conf","") + ".match"
+
+        if regenerate_matchlogfiles or self.logfile == None or self.logfile == "":
+            self.logfile = self.filename.replace(".conf","") + ".log"
+
         fio = open(filename, "w")
         
         self.__write(fio, "series1")
@@ -436,14 +475,14 @@ class MatchConfFile(object):
         
         if which == 1:
             self.series1 = filename
-            self.begin1 = float(begin) 
-            self.end1   = float(end)
-            self.numintervals1 = int(nintervals)
+            self.begin1 = float(begin) if begin else None 
+            self.end1   = float(end) if end else None
+            self.numintervals1 = int(nintervals) if nintervals else None
         elif which == 2:
             self.series2 = filename
-            self.begin2 = float(begin) 
-            self.end2   = float(end)
-            self.numintervals2 = int(nintervals)
+            self.begin2 = float(begin) if begin else None
+            self.end2   = float(end) if end else None
+            self.numintervals2 = int(nintervals) if nintervals else None
         else:
             raise Exception("time series not know !")
         return self
@@ -474,7 +513,7 @@ class MatchConfFile(object):
         self.speedchange  = round(350.0*(0.15*s+m**2))/100.0
         self.tiepenalty   = round(5000.0*s/d+m**2.0)
         self.gappenalty   = round(1000.0*s/d+0.8*m**2)
-
+    
     def clean(self):
         if os.path.isfile(self.logfile):   os.unlink(self.logfile)
         if os.path.isfile(self.matchfile): os.unlink(self.matchfile)
@@ -496,7 +535,7 @@ class MatchConfFile(object):
             return s
         else:
             raise Exception("No such serie")
-
+    
     def run(self, autosave = False):
         if not os.path.isfile(self.filename):
             raise Exception("Filename '%s' Not Found." % self.filename)
@@ -542,7 +581,7 @@ class MatchConfFile(object):
 
         return items
     
-    def optimize(self, parameter, values):
+    def optimize(self, parameter, values, update = True):
         if not hasattr(self, parameter):
             raise Exception("%s not in self" % parameter)
         
@@ -559,6 +598,9 @@ class MatchConfFile(object):
         x   = []
         s   = []
 
+        bvalue = None
+        mrms   = None
+        original_filename = self.filename
         for iv, v in zip(range(len(values)), values):
             print ".",
             setattr(self,parameter,v)
@@ -578,6 +620,10 @@ class MatchConfFile(object):
             r = np.sqrt( np.mean( (y1n-y2n)**2 ))
             self.clean()
 
+            if mrms == None or r < mrms:
+                bvalue = v
+                mrms = r
+
             try:
                 v = float(v)
             except:
@@ -587,6 +633,12 @@ class MatchConfFile(object):
             s.append(results['Total'])
             rms.append(r)
 
+        self.filename = original_filename
+        if update:
+            setattr(self, parameter, bvalue)
+            self.write()
+            self.run()
+        
         _, ax1 = plt.subplots()
         
         ax1.plot(x, rms, "r-o", label='RMS')
@@ -605,6 +657,7 @@ class MatchConfFile(object):
         plt.legend(formats, labels)
     
     def report(self):
+        print ""
         print " ** Series **"
         print "%13s" % "Series:", self.series1, "begin:", self.begin1, "end:", self.end1, "num. Intervals:", self.numintervals1
         print "%13s" % "Series:", self.series2, "begin:", self.begin2, "end:", self.end2, "num. Intervals:", self.numintervals2
