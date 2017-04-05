@@ -627,6 +627,24 @@ class MatchConfFile(object):
     
     ''' Utils
     '''
+    def computeSpeeds(self, first, last, exchanged = True):
+        if not isinstance(first, list):
+            first = range(1,first+1)
+        if not isinstance(last, list):
+            last = range(1,last+1)
+        if len(first) == 0 or len(last) == 0:
+            raise Exception("Not enough values for pair")
+        
+        items = []
+        for f in first:
+            for l in last:
+                item = "%d:%d" % (f,l)
+                if item not in items: items.append(item)
+                if exchanged:
+                    item = "%d:%d" % (l,f)
+                    if item not in items: items.append(item)
+        self.speeds = items
+
     def setSeries(self, which, filename, begin, end, nintervals):
         if not os.path.isfile(filename):
             raise Exception("Not a file ! ")
