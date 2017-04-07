@@ -651,14 +651,16 @@ class MatchConfFile(object):
         
         if which == 1:
             self.series1 = filename
-            self.begin1 = float(begin) if begin else None 
-            self.end1   = float(end) if end else None
-            self.numintervals1 = int(nintervals) if nintervals else None
+            serie = Serie(filename)
+            self.begin1 = float(begin) if begin != None else serie.x.min() 
+            self.end1   = float(end) if end != None else serie.x.max()
+            self.numintervals1 = int(nintervals) if nintervals != None else len(serie.x) // 7
         elif which == 2:
             self.series2 = filename
-            self.begin2 = float(begin) if begin else None
-            self.end2   = float(end) if end else None
-            self.numintervals2 = int(nintervals) if nintervals else None
+            serie = Serie(filename)
+            self.begin2 = float(begin) if begin != None else serie.x.min()
+            self.end2   = float(end) if end != None else serie.x.max()
+            self.numintervals2 = int(nintervals) if nintervals != None else len(serie.x) // 7
         else:
             raise Exception("time series not know !")
         return self
@@ -682,13 +684,13 @@ class MatchConfFile(object):
         std2  = np.std(db)
         m = 2*np.abs(mean1-mean2)
         s = max(std1, std2)**2
-        d = max(db) - min(db) ## This id done with f2 called "target" in matlab
+        d = self.end2 - self.begin2
         
-        self.nomatch      = round(150.0*(s+m**2))/10.0
-        self.speedpenalty = round(350.0*(0.2*s+m**2))/100.0
-        self.speedchange  = round(350.0*(0.15*s+m**2))/100.0
-        self.tiepenalty   = round(5000.0*s/d+m**2.0)
-        self.gappenalty   = round(1000.0*s/d+0.8*m**2)
+        self.nomatch      = round(150.0*(s+m*m))/10.0
+        self.speedpenalty = round(350.0*(0.2*s+m*m))/100.0
+        self.speedchange  = round(350.0*(0.15*s+m*m))/100.0
+        self.tiepenalty   = round(5000.0*s/d+m*m)
+        self.gappenalty   = round(1000.0*s/d+0.8*m*m)
     
     def clean(self):
         if os.path.isfile(self.logfile):   os.unlink(self.logfile)
