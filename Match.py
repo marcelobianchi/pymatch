@@ -130,7 +130,6 @@ class Serie(object):
         else:
             m = self.y.mean()
             s = self.y.std()
-        print "yuio!"
         self.y = (self.y - m) / s
     
         return self
@@ -860,7 +859,9 @@ class MatchConfFile(object):
             setattr(self,parameter,v)
 
             self.write("lala.conf")
+            
             results = self.run(plotresults = False)
+            
             sa = self.getSeries(1)
             sb = self.getSeries(2)
             x1 = sa.x
@@ -870,11 +871,14 @@ class MatchConfFile(object):
             xnew = np.linspace(min(x1), max(x2), 2000)
             y1n = np.interp(xnew, x1, y1)
             y2n = np.interp(xnew, x2, y2)
-            r = np.sqrt( np.mean( (y1n-y2n)**2 ))
+            
+            r = np.correlate(y1n,y2n)[0]
+            # r = np.sqrt( np.mean( (y1n-y2n)**2 ))
+            
             self.clean()
             os.unlink("lala.conf")
 
-            if mrms == None or r < mrms:
+            if mrms == None or r > mrms:
                 bvalue = v
                 mrms = r
 
