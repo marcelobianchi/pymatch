@@ -178,6 +178,10 @@ class Serie(object):
         m2 = self.x.max() if self.end is None else self.end
         plt.axvspan(m1, m2, 0.05, 0.15, alpha=0.75, color="0.6", label='Used Segment')
         plt.plot(self.x, self.y, label='Series %s [%s]' % (self.label if self.label else '-',self.filename))
+        
+        for k,v in self.ties.iteritems():
+            plt.axvline(v, 0.05, 0.2, color ='k')
+        
         plt.legend()
     
     def report(self):
@@ -225,6 +229,8 @@ class MatchConfFile(object):
         self._filename = filename
         self._issaved = False
         
+        self._tiepoints = {}
+        
         # These are property
         self._speeds =  []
         self._targetspeed  = None
@@ -238,6 +244,16 @@ class MatchConfFile(object):
     
     ''' Getters
     '''
+    def _addTie(self, label, v1, v2):
+        self._tiepoints[label] = (float(v1), float(v2))
+    
+    def _tie(self, label, which = None):
+        t = self._tiepoints[label]
+        return t if which == None else t[which - 1]
+    
+    def _ties(self):
+        return self._tiepoints.keys()
+    
     @property
     def filename(self):
         return self._filename
@@ -507,6 +523,27 @@ class MatchConfFile(object):
         
         return k, v
     
+    def _loadtie(self):
+        if self.tiefile == "" or self.tiefile == None:
+            return
+        
+        if not os.path.isfile(self.tiefile):
+            print "Tie file not found."
+            return
+        
+        label = ['A']
+        with open(self.tiefile) as fio:
+            for line in fio:
+                v1, v2 = line.strip().split()
+                v1 = float(v1)
+                v2 = float(v2)
+                self._addTie("".join(label), v1, v2)
+                if label[-1] == "Z":
+                    label[-1] = 'A'
+                    label.append("A")
+                else:
+                    label = chr(ord(label[-1]) + 1)
+
     def __read(self):
         validkeys = [
             "series1", "begin1", "end1", "numintervals1",
@@ -514,7 +551,7 @@ class MatchConfFile(object):
             "nomatch", "speedpenalty", "targetspeed",
             "speedchange", "tiepenalty", "gappenalty",
             "speeds", "tiefile", "series1gaps", "series2gaps",
-            "matchfile", "logfile"]
+            "matchfile", "logfile" ]
         
         targetspeed = None
         
@@ -536,6 +573,8 @@ class MatchConfFile(object):
             self.targetspeed = targetspeed
         except Exception,e:
             print "Error -- ",e.message
+        
+        self._loadtie()
     
     def __write(self, fio, variable):
         v = getattr(self, variable)
@@ -707,11 +746,13 @@ class MatchConfFile(object):
             if self.series1 == None: raise Exception("Serie is Unset.")
             s = Serie(self.series1, '#1')
             s.setLimits(self.begin1, self.end1)
+            map(lambda k: s.setTie(k, self._tie(k, 1)), self._ties())
             return s
         elif which == 2:
             if self.series2 == None: raise Exception("Serie is Unset.")
             s = Serie(self.series2, '#2')
             s.setLimits(self.begin2, self.end2)
+            map(lambda k: s.setTie(k, self._tie(k, 2)), self._ties())
             return s
         else:
             raise Exception("No such serie")
@@ -726,6 +767,10 @@ class MatchConfFile(object):
         if not os.path.isfile(MatchConfFile._MATCHCMD):
             raise Exception("Program 'match' was not found in this system !")
         
+        if autosave:
+            print "Auto-saving file '%s'" % self.filename
+            self.write()
+        
         results = os.popen('%s -v %s 2>&1' % (MatchConfFile._MATCHCMD, self.filename))
         
         items = {
@@ -738,10 +783,6 @@ class MatchConfFile(object):
             "gap" : -1,
             "tie nomatch": -1
         }
-        
-        if autosave:
-            print "Auto-saving file '%s'" % self.filename
-            self.write()
         
         go = False
         for line in results:
@@ -821,6 +862,8 @@ class MatchConfFile(object):
 
         self.filename = original_filename
         if update:
+            print ""
+            print "Final parameter %s = %s"  % (parameter, bvalue)
             setattr(self, parameter, bvalue)
             self.write()
             self.run()
@@ -865,6 +908,14 @@ class MatchConfFile(object):
         print "%13s" % "tiefile:", self.tiefile
         print "%13s" % "matchfile:", self.matchfile
         print "%13s" % "logfile:", self.logfile
+        
+        print ""
+        print " ** Ties **"
+        print " %d ties are defined" % len(self._tiepoints)
+
+        for k in sorted(self._ties()):
+            v1, v2 = self._tie(k)
+            print "  Label '%-s' %5s = %-5s" % (k,v1,v2)
 
 def create_tie(label, series_list, ages_list):
     label = str(label)
