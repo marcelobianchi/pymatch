@@ -179,7 +179,7 @@ class Serie(object):
         plt.axvspan(m1, m2, 0.05, 0.15, alpha=0.75, color="0.6", label='Used Segment')
         plt.plot(self.x, self.y, label='Series %s [%s]' % (self.label if self.label else '-',self.filename))
         
-        for k,v in self.ties.iteritems():
+        for v in self.ties.values():
             plt.axvline(v, 0.05, 0.2, color ='k')
         
         plt.legend()
@@ -757,19 +757,19 @@ class MatchConfFile(object):
         else:
             raise Exception("No such serie")
     
-    def run(self, autosave = False):
+    def run(self, autosave = False, plotresults = True):
         if self._issaved == False and autosave == False:
             raise Exception("Please save Conf file first !")
+        
+        if autosave:
+            print "Auto-saving file '%s'" % self.filename
+            self.write()
         
         if not os.path.isfile(self.filename):
             raise Exception("Filename '%s' Not Found." % self.filename)
         
         if not os.path.isfile(MatchConfFile._MATCHCMD):
             raise Exception("Program 'match' was not found in this system !")
-        
-        if autosave:
-            print "Auto-saving file '%s'" % self.filename
-            self.write()
         
         results = os.popen('%s -v %s 2>&1' % (MatchConfFile._MATCHCMD, self.filename))
         
@@ -800,9 +800,29 @@ class MatchConfFile(object):
                 if k not in items.keys(): continue
             except:
                 continue
-
+            
             items[k] = float(v)
-
+        
+        ## Plotting results as bar plot
+        #
+        if plotresults:
+            labels = ["Total", "point", "nomatch", "speed", "speedchange", "tie", "gap", "tie nomatch"]
+            values = map(lambda x: items[x], labels)
+            positions = range(len(labels))
+            plt.figure(figsize=(15,3))
+            plt.bar(positions, values, align='center')
+            plt.xticks(positions, labels)
+            plt.ylabel("Score")
+            sb = self.getSeries(2)
+            _, x1, _, x2 = np.loadtxt(self.matchfile, unpack = True)
+            
+            _, ax1 = plt.subplots(figsize=(10,7))
+            ax1.plot(x1,x2)
+            ax2 = ax1.twinx()
+            ax2.plot(sb.xm, sb.ym)
+            ax2.set_ylim(min(sb.ym),max(sb.ym)*15)
+            
+            
         return items
     
     def optimize(self, parameter, values, update = True, plot = True):
@@ -818,7 +838,6 @@ class MatchConfFile(object):
                              ]:
             raise Exception("%s is not optimizable" % parameter)
         
-        rms = []
         x   = []
         s   = []
         
@@ -832,8 +851,7 @@ class MatchConfFile(object):
             setattr(self,parameter,v)
 
             self.write("lala.conf")
-            results = self.run()
-            
+            results = self.run(plotresults = False)
             sa = self.getSeries(1)
             sb = self.getSeries(2)
             x1 = sa.x
@@ -857,8 +875,8 @@ class MatchConfFile(object):
                 v = iv
 
             x.append(v)
-            s.append(results['Total'])
-            rms.append(r)
+            results['rms'] = r
+            s.append(results)
 
         self.filename = original_filename
         if update:
@@ -869,22 +887,25 @@ class MatchConfFile(object):
             self.run()
         
         if plot:
-            _, ax1 = plt.subplots()
-            
-            ax1.plot(x, rms, "r-o", label='RMS')
-            ax1.set_ylabel('RMS')
+            _, ax1 = plt.subplots(figsize=(10,7))
+            values = map(lambda item: item["rms"], s)
+            ax1.plot(x, values, "r-o", label='RMS')
             formats, labels = ax1.get_legend_handles_labels()
             
             ax2 = ax1.twinx()
-            ax2.plot(x, s, "k+-", label='Total Score')
-            ax2.set_ylabel('Total Score')
+            for k in ["Total", "point", "nomatch", "speed", "speedchange", "tie", "gap", "tie nomatch"]:
+                values = map(lambda item: item[k], s)
+                ax2.plot(x, values, label = k)
+            
             f, l = ax2.get_legend_handles_labels()
             
             formats.extend(f)
             labels.extend(l)
-    
-            plt.xlabel("%s" % (parameter))
-            plt.legend(formats, labels)
+            
+            ax1.set_ylabel('RMS')
+            ax2.set_ylabel('Total Score')
+            ax1.set_xlabel("%s" % (parameter))
+            plt.legend(formats, labels, loc='upper left', ncol=1, shadow=True,  bbox_to_anchor=(1.1, 1.0))
     
     def report(self):
         print ""
@@ -912,7 +933,7 @@ class MatchConfFile(object):
         print ""
         print " ** Ties **"
         print " %d ties are defined" % len(self._tiepoints)
-
+        
         for k in sorted(self._ties()):
             v1, v2 = self._tie(k)
             print "  Label '%-s' %5s = %-5s" % (k,v1,v2)
