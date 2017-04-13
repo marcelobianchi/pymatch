@@ -123,9 +123,14 @@ class Serie(object):
         
         return True
     
-    def normalizeStd(self):
-        m = self.y.mean()
-        s = self.y.std()
+    def normalizeStd(self, respect = True):
+        if respect:
+            m = self.y_window.mean()
+            s = self.y_window.std()
+        else:
+            m = self.y.mean()
+            s = self.y.std()
+        print "yuio!"
         self.y = (self.y - m) / s
     
         return self
@@ -771,6 +776,10 @@ class MatchConfFile(object):
         if not os.path.isfile(MatchConfFile._MATCHCMD):
             raise Exception("Program 'match' was not found in this system !")
         
+        
+        self.getSeries(1).normalizeStd(True).write()
+        self.getSeries(2).normalizeStd(True).write()
+
         results = os.popen('%s -v %s 2>&1' % (MatchConfFile._MATCHCMD, self.filename))
         
         items = {
