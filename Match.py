@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#! /usr/bin/python
 
 #     This file is part of PyMatchInterface.
 # 
@@ -204,6 +204,123 @@ class Serie(object):
         for k,x in self.ties.iteritems():
             print "      Tie #%d, Label: %s Position: %s" % (i, k, x)
             i += 1
+
+class MatchLog(object):
+    def __init__(self, matchfile, logfile, sa = None, sb = None):
+        self.logfile   = logfile
+        self.matchfile = matchfile
+        
+        self.x1 = None
+        self.x2 = None
+        
+        self.sa = sa
+        self.sb = sb
+        
+        self.scores = {
+            "Total" : -1,
+            "point" : -1,
+            "nomatch" : -1,
+            "speed" : -1,
+            "speedchange" : -1,
+            "tie" : -1,
+            "gap" : -1,
+            "tie nomatch": -1
+        }
+        
+        self.params = {
+            "begin1" : None, "end1" : None, "numintervals1" : None,
+            "begin2" : None, "end2" : None, "numintervals2" : None,
+            "nomatch" : None, "speedpenalty" : None, "targetspeed" : None,
+            "speedchange" : None, "tiepenalty" : None, "gappenalty" : None
+        }
+
+        self._parse_log()
+        self._parse_match()
+        
+        self._rms = None
+        self._cor = None
+    
+    def _parse_match(self):
+        if not os.path.isfile(self.matchfile):
+            raise Exception("No Match file found.")
+        _, x1, _, x2 = np.loadtxt(self.matchfile, unpack = True)
+        self.x1 = x1
+        self.x2 = x2
+    
+    def _parse_log(self):
+        if not os.path.isfile(self.logfile):
+            raise Exception("No Match file found.")
+        
+        with open(self.logfile) as results:
+            go = False
+            for line in results:
+                line = line.strip()
+                if line == "---Penalties---":
+                    go = True
+                    continue
+                
+                if not go: continue
+                
+                try:
+                    k,v = line.split(":")
+                    k = k.strip()
+                    v = v.strip()
+                    if k not in self.scores.keys(): continue
+                except:
+                    continue
+                self.scores[k] = float(v)
+    
+    @property
+    def correlation(self):
+        if self.sa == None or self.sb == None:
+            return False
+        
+        if self._cor == None:
+            sa = self.sa
+            sb = self.sb
+            
+            xnew = np.linspace(min(sa.x), max(sb.xm), 2000)
+            y1n = np.interp(xnew, sa.x, sa.y)
+            y2n = np.interp(xnew, sb.xm, sb.ym)
+            self._cor = np.correlate(y1n, y2n)[0]
+            
+        return self._cor
+    
+    @property
+    def rms(self):
+        if self.sa == None or self.sb == None:
+            return False
+        
+        if self._rms == None:
+            sa = self.sa
+            sb = self.sb
+            
+            xnew = np.linspace(min(sa.x), max(sb.xm), 2000)
+            y1n = np.interp(xnew, sa.x, sa.y)
+            y2n = np.interp(xnew, sb.xm, sb.ym)
+            self._rms = np.sqrt( np.mean( (y1n-y2n)**2 ))
+        
+        return self._rms
+    
+    def plot(self):
+        labels = ["Total", "point", "nomatch", "speed", "speedchange", "tie", "gap", "tie nomatch"]
+        
+        # Bar Plot
+        values = map(lambda x: self.scores[x], labels)
+        positions = range(len(labels))
+        plt.figure(figsize=(15,3))
+        plt.bar(positions, values, align='center')
+        plt.xticks(positions, labels)
+        plt.ylabel("Score")
+        
+        # Sedimentation Ratio
+        _, ax1 = plt.subplots(figsize=(10,7))
+        ax1.plot(self.x1, self.x2)
+        
+        if self.sb != None:
+            ax2 = ax1.twinx()
+            ax2.plot(self.sb.xm, self.sb.ym)
+            ax2.set_ylim(min(self.sb.ym),max(self.sb.ym)*15)
 
 class MatchConfFile(object):
     ##
@@ -761,9 +878,17 @@ class MatchConfFile(object):
         else:
             raise Exception("No such serie")
     
+    def _params(self):
+        return {
+            "begin1" : self.begin1, "end1" : self.end1, "numintervals1" : self.numintervals1,
+            "begin2" : self.begin2, "end2" : self.end2, "numintervals2" : self.numintervals2,
+            "nomatch" : self.nomatch, "speedpenalty" : self.speedpenalty, "targetspeed" : self.targetspeed,
+            "speedchange" : self.speedchange, "tiepenalty" : self.tiepenalty, "gappenalty" : self.gappenalty
+        }
+    
     def run(self, autosave = False, plotresults = True):
         if self._issaved == False and autosave == False:
-            raise Exception("Please save Conf file first !")
+            raise Exception("Please save CONF file first !")
         
         if autosave:
             print "Auto-saving file '%s'" % self.filename
@@ -775,63 +900,22 @@ class MatchConfFile(object):
         if not os.path.isfile(MatchConfFile._MATCHCMD):
             raise Exception("Program 'match' was not found in this system !")
         
-        
         self.getSeries(1).normalizeStd(True).write()
         self.getSeries(2).normalizeStd(True).write()
-
-        results = os.popen('%s -v %s 2>&1' % (MatchConfFile._MATCHCMD, self.filename))
         
-        items = {
-            "Total" : -1,
-            "point" : -1,
-            "nomatch" : -1,
-            "speed" : -1,
-            "speedchange" : -1,
-            "tie" : -1,
-            "gap" : -1,
-            "tie nomatch": -1
-        }
+        os.popen('%s -v %s 2>&1' % (MatchConfFile._MATCHCMD, self.filename))
         
-        go = False
-        for line in results:
-            line = line.strip()
-            if line == "---Penalties---":
-                go = True
-                continue
-            
-            if not go: continue
-            
-            try:
-                k,v = line.split(":")
-                k = k.strip()
-                v = v.strip()
-                if k not in items.keys(): continue
-            except:
-                continue
-            
-            items[k] = float(v)
+        ml = MatchLog(self.matchfile,
+                      self.logfile,
+                      self.getSeries(1),
+                      self.getSeries(2)
+                      )
         
-        ## Plotting results as bar plot
-        #
-        if plotresults:
-            labels = ["Total", "point", "nomatch", "speed", "speedchange", "tie", "gap", "tie nomatch"]
-            values = map(lambda x: items[x], labels)
-            positions = range(len(labels))
-            plt.figure(figsize=(15,3))
-            plt.bar(positions, values, align='center')
-            plt.xticks(positions, labels)
-            plt.ylabel("Score")
-            sb = self.getSeries(2)
-            _, x1, _, x2 = np.loadtxt(self.matchfile, unpack = True)
-            
-            _, ax1 = plt.subplots(figsize=(10,7))
-            ax1.plot(x1,x2)
-            ax2 = ax1.twinx()
-            ax2.plot(sb.xm, sb.ym)
-            ax2.set_ylim(min(sb.ym),max(sb.ym)*15)
-            
-            
-        return items
+        ml.params.update(self._params())
+        
+        if plotresults: ml.plot()
+        
+        return ml 
     
     def optimize(self, parameter, values, update = True, plot = True):
         if not hasattr(self, parameter):
@@ -851,63 +935,41 @@ class MatchConfFile(object):
         
         print "Working on optimizing %s from %s - %s" % (parameter, values[0], values[-1]) 
         
-        bvalue = None
-        mrms   = None
+        best_value = None
+        max_cor    = None
         original_filename = self.filename
         for iv, v in zip(range(len(values)), values):
             if plot: print ".",
-            setattr(self,parameter,v)
-
+            setattr(self, parameter, v)
+            
             self.write("lala.conf")
-            
             results = self.run(plotresults = False)
-            
-            sa = self.getSeries(1)
-            sb = self.getSeries(2)
-            x1 = sa.x
-            y1 = sa.y
-            x2 = sb.xm
-            y2 = sb.ym
-            xnew = np.linspace(min(x1), max(x2), 2000)
-            y1n = np.interp(xnew, x1, y1)
-            y2n = np.interp(xnew, x2, y2)
-            
-            r = np.correlate(y1n,y2n)[0]
-            # r = np.sqrt( np.mean( (y1n-y2n)**2 ))
-            
             self.clean()
             os.unlink("lala.conf")
-
-            if mrms == None or r > mrms:
-                bvalue = v
-                mrms = r
-
-            try:
-                v = float(v)
-            except:
-                v = iv
-
-            x.append(v)
-            results['rms'] = r
+            
+            if max_cor == None or results.correlation > max_cor:
+                best_value = v
+                max_cor = results.correlation
+            
+            x.append(float(v) if not isinstance(v, str) else iv)
             s.append(results)
-
+        
         self.filename = original_filename
         if update:
             print ""
-            print "Final parameter %s = %s"  % (parameter, bvalue)
-            setattr(self, parameter, bvalue)
-            self.write()
-            self.run()
+            print "Final parameter %s = %s"  % (parameter, best_value)
+            setattr(self, parameter, best_value)
+            self.run(autosave = True)
         
         if plot:
             _, ax1 = plt.subplots(figsize=(10,7))
-            values = map(lambda item: item["rms"], s)
-            ax1.plot(x, values, "r-o", label='RMS')
+            values = map(lambda item: item.correlation, s)
+            ax1.plot(x, values, "r-o", label='Correlation')
             formats, labels = ax1.get_legend_handles_labels()
             
             ax2 = ax1.twinx()
             for k in ["Total", "point", "nomatch", "speed", "speedchange", "tie", "gap", "tie nomatch"]:
-                values = map(lambda item: item[k], s)
+                values = map(lambda item: item.scores[k], s)
                 ax2.plot(x, values, label = k)
             
             f, l = ax2.get_legend_handles_labels()
@@ -915,10 +977,18 @@ class MatchConfFile(object):
             formats.extend(f)
             labels.extend(l)
             
-            ax1.set_ylabel('RMS')
+            ax1.set_ylabel('Correlation')
             ax2.set_ylabel('Total Score')
             ax1.set_xlabel("%s" % (parameter))
-            plt.legend(formats, labels, loc='upper left', ncol=1, shadow=True,  bbox_to_anchor=(1.1, 1.0))
+            plt.legend(formats,
+                       labels,
+                       loc='upper left',
+                       ncol=1,
+                       shadow=True,
+                       bbox_to_anchor=(1.1, 1.0)
+                       )
+        
+        return s
     
     def report(self):
         print ""
