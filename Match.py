@@ -41,7 +41,7 @@ class Serie(object):
         self.sm    = None
         self.ismatched = False
         self.label = 'Noname' if label is None else label
-        self._ties  = {}
+        self._ties  = { }
         
         self.x, self.y, self.s = self.__read(self.filename)
         
@@ -65,12 +65,25 @@ class Serie(object):
             s,x,y = data
         return x,y,s
     
-    def setLimits(self, begin = None, end = None):
+    def setLimits(self, begin = None, end = None, cut = False):
         '''
         Sets data series usefull limits
         '''
+        if begin and end and begin >= end: 
+            raise Exception("Begin should be smaller than end !")
+        
         self.begin = begin
         self.end   = end
+        
+        if cut:
+            self.y = self._window(self.y)
+            self.x = self._window(self.x)
+            t = {}
+            for t in self._ties.keys():
+                val = self._ties[t]
+                if begin and val < begin: del self._ties[t]
+                if end and val > end: del self._ties[t]
+        
         return self
     
     def _window(self, var):
@@ -84,9 +97,9 @@ class Serie(object):
             return var[ self.x < e ]
         
         if s != None and e == None:
-            return var[ self.x > s ]
+            return var[ self.x >= s ]
 
-        return var[ (self.x > s) & (self.x < e) ]
+        return var[ (self.x >= s) & (self.x <= e) ]
     
     @property
     def ties(self):
@@ -134,7 +147,7 @@ class Serie(object):
     
         return self
     
-    def normalize(self, to = None, respect = True):
+    def normalize(self, respect = True, to = None):
         '''
         Normalize this serie between -0.5 and 0.5, or 
         if to is an Serie instance match this one to the other.
@@ -142,11 +155,21 @@ class Serie(object):
         if to is not None and not isinstance(to, Serie):
             raise Exception("Bad destination Serie instance on to variable !")
         
-        s = 1.0 if to == None else np.max(to.y) - np.min(to.y)
-        l = -0.5 if to == None else np.min(to.y)
+        selfy  = self.y if respect == False else self.y_window
         
-        self.y -= np.min(self.y)
-        self.y *= s/np.max(self.y)
+        s = 1.0
+        l = -0.5
+        
+        if to is not None:
+            othery = to.y if respect == False else to.y_window
+            s = np.max(othery) - np.min(othery)
+            l = np.min(othery)
+        
+        offset = selfy.min()
+        norm   = np.max(selfy - offset)
+        
+        self.y -= np.min(selfy)
+        self.y *= (s / norm)
         self.y += l
 
         return self
