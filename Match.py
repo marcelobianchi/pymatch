@@ -134,7 +134,7 @@ class Serie(object):
     
         return self
     
-    def normalize(self, to = None):
+    def normalize(self, to = None, respect = True):
         '''
         Normalize this serie between -0.5 and 0.5, or 
         if to is an Serie instance match this one to the other.
@@ -144,7 +144,7 @@ class Serie(object):
         
         s = 1.0 if to == None else np.max(to.y) - np.min(to.y)
         l = -0.5 if to == None else np.min(to.y)
-
+        
         self.y -= np.min(self.y)
         self.y *= s/np.max(self.y)
         self.y += l
@@ -363,8 +363,6 @@ class MatchConfFile(object):
             self.matchfile = self.filename.replace(".conf","") + ".match"
             self.logfile = self.filename.replace(".conf","") + ".log"
     
-    ''' Getters
-    '''
     def _addTie(self, label, v1, v2):
         self._tiepoints[label] = (float(v1), float(v2))
     
@@ -375,6 +373,8 @@ class MatchConfFile(object):
     def _ties(self):
         return self._tiepoints.keys()
     
+    ''' Getters
+    '''
     @property
     def filename(self):
         return self._filename
@@ -602,7 +602,10 @@ class MatchConfFile(object):
     
     @tiefile.setter
     def tiefile(self, value):
-        self._tiefile = str(value) if value != None else None
+        value = str(value) if value != None else None
+        self._tiefile = value
+        if os.path.isfile(value):
+            self._loadtie()
         self._issaved = False
     
     @series1gaps.setter
@@ -652,6 +655,8 @@ class MatchConfFile(object):
             print "Tie file not found."
             return
         
+        self._tiepoints = { }
+        
         label = ['A']
         with open(self.tiefile) as fio:
             for line in fio:
@@ -694,8 +699,6 @@ class MatchConfFile(object):
             self.targetspeed = targetspeed
         except Exception,e:
             print "Error -- ",e.message
-        
-        self._loadtie()
     
     def __write(self, fio, variable):
         v = getattr(self, variable)
@@ -1021,7 +1024,7 @@ class MatchConfFile(object):
             v1, v2 = self._tie(k)
             print "  Label '%-s' %5s = %-5s" % (k,v1,v2)
 
-def create_tie(label, series_list, ages_list):
+def tie_series(label, series_list, ages_list):
     label = str(label)
     
     series_list = [ series_list ] if not isinstance(series_list, list) else series_list
