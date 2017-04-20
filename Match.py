@@ -310,6 +310,10 @@ class MatchLog(object):
         return self._cor
     
     @property
+    def good(self):
+        return self.scores["Total"] != -1
+    
+    @property
     def rms(self):
         if self.sa == None or self.sb == None:
             return False
@@ -351,7 +355,7 @@ class MatchConfFile(object):
     ##
     _MATCHCMD = "./match" 
     
-    def __init__(self, filename):
+    def __init__(self, filename, autonormalize = False):
         self._series1 = None
         self._begin1  = None
         self._end1    = None
@@ -372,6 +376,8 @@ class MatchConfFile(object):
         self._logfile     = None
         self._filename = filename
         self._issaved = False
+        
+        self._autonormalize = autonormalize
         
         self._tiepoints = {}
         
@@ -488,7 +494,6 @@ class MatchConfFile(object):
         value = float(value)
         sa = self.getSeries(which)
         if value < sa.x.min() or value > sa.x.max():
-            print "Adjusting end by time series range !"
             value = max(sa.x.min(), min(sa.x.max(), value))
         return value
     
@@ -892,13 +897,13 @@ class MatchConfFile(object):
         if which == 1:
             if self.series1 == None: raise Exception("Serie is Unset.")
             s = Serie(self.series1, '#1')
-            s.setLimits(self.begin1, self.end1)
+            s.setLimits(self.begin1, self.end1, cut = False)
             map(lambda k: s.setTie(k, self._tie(k, 1)), self._ties())
             return s
         elif which == 2:
             if self.series2 == None: raise Exception("Serie is Unset.")
             s = Serie(self.series2, '#2')
-            s.setLimits(self.begin2, self.end2)
+            s.setLimits(self.begin2, self.end2, cut = False)
             map(lambda k: s.setTie(k, self._tie(k, 2)), self._ties())
             return s
         else:
@@ -926,8 +931,10 @@ class MatchConfFile(object):
         if not os.path.isfile(MatchConfFile._MATCHCMD):
             raise Exception("Program 'match' was not found in this system !")
         
-        self.getSeries(1).normalizeStd(True).write()
-        self.getSeries(2).normalizeStd(True).write()
+        if self._autonormalize:
+            print "Normalizing series (1) from %.1f to %.1f and series (2) from %.1f to %.1f" % (self.begin1, self.end1, self.begin2, self.end2)
+            self.getSeries(1).normalizeStd(True).write()
+            self.getSeries(2).normalizeStd(True).write()
         
         os.popen('%s -v %s 2>&1' % (MatchConfFile._MATCHCMD, self.filename))
         
@@ -960,12 +967,22 @@ class MatchConfFile(object):
         s   = []
         
         print "Working on optimizing %s from %s - %s" % (parameter, values[0], values[-1]) 
-        
         best_value = None
         max_cor    = None
         original_filename = self.filename
+        pcount     = 0
+        rounds = 0
         for iv, v in zip(range(len(values)), values):
-            if plot: print ".",
+            if plot:
+                if pcount in  [5,10,15, 20, 25, 30, 35, 40]: print " ",
+                if pcount == 45:
+                    rounds += 1
+                    print "%03s %%" % ((100*rounds*45)/len(values))
+                    pcount = 0
+                print ".",
+                if iv == len(values)-1: print "100 %"
+            pcount += 1
+            
             setattr(self, parameter, v)
             
             self.write("lala.conf")
@@ -981,9 +998,10 @@ class MatchConfFile(object):
             s.append(results)
         
         self.filename = original_filename
+        
+        print "Final parameter %s = %s"  % (parameter, best_value)
+        
         if update:
-            print ""
-            print "Final parameter %s = %s"  % (parameter, best_value)
             setattr(self, parameter, best_value)
             self.run(autosave = True)
         
