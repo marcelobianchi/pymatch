@@ -19,6 +19,76 @@ import numpy as np
 import os
 from matplotlib import pyplot as plt
 
+class Tie(object):
+    def __init__(self, filename):
+        self.__label = None
+        self._filename = filename
+        self.__tiepoints =  { }
+        
+        if os.path.isfile(self.filename):
+            with open(self.filename) as fio:
+                for line in fio:
+                    v1, v2 = line.strip().split()
+                    v1 = float(v1)
+                    v2 = float(v2)
+                    self.set_tie(v1, v2)
+    
+    @property
+    def filename(self):
+        return self._filename
+    
+    @property
+    def tie_labels(self):
+        return self.__tiepoints.keys()
+    
+    @property
+    def nextlabel(self):
+        if self.__label == None:
+            self.__label = "A"
+        else:
+            indices = map(lambda x: ord(x), self.__label)
+            updated = False
+            for i in range(1,len(indices)+1):
+                if indices[-i] == 90:
+                    indices[-i] = 65
+                    continue
+                indices[-i] += 1
+                updated = True
+                break
+            if not updated: indices.insert(0, 65)
+            self.__label = "".join(map(lambda x: chr(x), indices))
+        return self.__label
+    
+    ''' Utils
+    '''
+    def set_tie(self, value_one, value_two, segment_one = 0, segment_two = 0, label = None):
+        label = label if label != None else self.nextlabel
+        self.__tiepoints[label] = (float(value_one), float(value_two),
+                                   int(segment_one), int(segment_two))
+    
+    def tie(self, label):
+        return self.__tiepoints[label]
+    
+    def saveas(self, filename):
+        self._filename = filename
+        return self.save()
+    
+    def save(self):
+        fio = open(self.filename, "w")
+        for label in self.tie_labels:
+            v1, v2, _, _ = self.tie(label)
+            print >>fio, v1, v2
+        fio.close()
+        
+        return True    
+    
+    def report(self):
+        n = len(self.tie_labels)
+        print 'Total of %d labels are defined.' % n
+        for label in sorted(self.tie_labels):
+            v1, v2, s1, s2 = self.tie(label)
+            print "  %s => %d,%f = %d,%f" % (label, s1,v1,s2,v2)
+
 class Serie(object):
     '''
     Represents one 1D series, can be 2 or 3 columns,
@@ -117,7 +187,7 @@ class Serie(object):
     
     def setTie(self, label, value):
         if value < self.x.min() or value > self.x.max():
-            raise Exception("Bad Value, outside of series definition range.")
+            raise Exception("Bad Tie Value = %f, outside of series x-definition range %f to %f." % (value,self.x.min(), self.x.max()))
 
         self._ties[label] = value
         return self
@@ -386,8 +456,6 @@ class MatchConfFile(object):
         
         self._autonormalize = autonormalize
         
-        self._tiepoints = {}
-        
         # These are property
         self._speeds =  []
         self._targetspeed  = None
@@ -640,10 +708,27 @@ class MatchConfFile(object):
     
     @tiefile.setter
     def tiefile(self, value):
-        value = str(value) if value != None else None
-        self._tiefile = value
-        if os.path.isfile(value):
-            self._loadtie()
+        if value == None:
+            self._tiefile = None
+        else:
+            if not os.path.isfile(value):
+                raise Exception("File '%s' not found." % value)
+            
+            ##
+            # Test tie
+            ##
+            tt = Tie(value)
+            sa = self.getSeries(1)
+            map(lambda label: sa.setTie(label, tt.tie(label)[0]), tt.tie_labels)
+            
+            sb = self.getSeries(2)
+            map(lambda label: sb.setTie(label, tt.tie(label)[1]), tt.tie_labels)
+            
+            ##
+            # Ok
+            ##
+            self._tiefile = value
+        
         self._issaved = False
     
     @series1gaps.setter
@@ -656,43 +741,8 @@ class MatchConfFile(object):
         self._series2gaps = str(value) if value != None else None
         self._issaved = False
     
-    ''' Tie Utils
-    '''
-    def add_tie(self, label, v1, v2):
-        self._tiepoints[label] = (float(v1), float(v2))
-    
-    def _tie(self, label, which = None):
-        t = self._tiepoints[label]
-        return t if which == None else t[which - 1]
-    
-    def _ties(self):
-        return self._tiepoints.keys()
-    
     ''' Io method
     '''
-    def _loadtie(self):
-        if self.tiefile == "" or self.tiefile == None:
-            return
-        
-        if not os.path.isfile(self.tiefile):
-            print "Tie file not found."
-            return
-        
-        self._tiepoints = { }
-        
-        label = ['A']
-        with open(self.tiefile) as fio:
-            for line in fio:
-                v1, v2 = line.strip().split()
-                v1 = float(v1)
-                v2 = float(v2)
-                self.add_tie("".join(label), v1, v2)
-                if label[-1] == "Z":
-                    label[-1] = 'A'
-                    label.append("A")
-                else:
-                    label = chr(ord(label[-1]) + 1)
-    
     def __read(self, filename):
         def pkv(line):
             items = line.strip().split()
@@ -931,17 +981,20 @@ class MatchConfFile(object):
         if os.path.isfile(f): os.unlink(f)
     
     def getSeries(self, which):
+        t = Tie(self.tiefile) if self.tiefile != None else None
         if which == 1:
             if self.series1 == None: raise Exception("Serie is Unset.")
             s = Serie(self.series1, '#1')
             s.setLimits(self.begin1, self.end1, cut = False)
-            map(lambda k: s.setTie(k, self._tie(k, 1)), self._ties())
+            if t:
+                map(lambda label: s.setTie(label, t.tie(label)[0]), t.tie_labels)
             return s
         elif which == 2:
             if self.series2 == None: raise Exception("Serie is Unset.")
             s = Serie(self.series2, '#2')
             s.setLimits(self.begin2, self.end2, cut = False)
-            map(lambda k: s.setTie(k, self._tie(k, 2)), self._ties())
+            if t:
+                map(lambda label: s.setTie(label, t.tie(label)[1]), t.tie_labels)
             return s
         else:
             raise Exception("No such serie")
@@ -1086,54 +1139,9 @@ class MatchConfFile(object):
         print "%13s" % "matchfile:", self.matchfile
         print "%13s" % "logfile:", self.logfile
         
-        print ""
-        print " ** Ties **"
-        print " %d ties are defined" % len(self._tiepoints)
-        
-        for k in sorted(self._ties()):
-            v1, v2 = self._tie(k)
-            print "  Label '%-s' %5s = %-5s" % (k,v1,v2)
+        if self.tiefile != "None":
+            tt = Tie(self.tiefile)
+            print " ** Ties **"
+            tt.report()
+            print ""
 
-def tie_series(label, series_list, ages_list):
-    label = str(label)
-    
-    series_list = [ series_list ] if not isinstance(series_list, list) else series_list
-    ages_list = [ ages_list ] if not isinstance(ages_list, list) else ages_list
-    
-    print ages_list
-    
-    for s in series_list:
-        if not isinstance(s, Serie):
-            raise Exception("Object in series_list is not of type Serie")
-
-    for a in ages_list:
-        try:
-            float(str(a))
-        except:
-            raise Exception("Object '%s' in agest_list is not a valid Number" % a)
-
-    for s,a in zip(series_list, ages_list):
-        s.setTie(label, a)
-    
-    return
-
-def show_tie(label,  series_list):
-    series_list = [series_list] if not isinstance(series_list, list) else series_list
-
-    for s in series_list:
-        if not isinstance(s, Serie):
-            raise Exception("Object in series_list is not of type Serie")
-
-    print "%15s  " % " ",
-    for s in series_list:
-        print "%-10s" % s.label,
-    print ""
-
-    print "%15s: " % label,
-    for s in series_list:
-        try:
-            print "%-10s" % s.ties[label],
-        except:
-            print "%-10s" % "-",
-    print ""
-    return
