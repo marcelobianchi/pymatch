@@ -21,11 +21,14 @@ from matplotlib import pyplot as plt
 
 class Tie(object):
     def __init__(self, filename):
+        if filename == "":
+            raise Exception("Need a valid filename or None")
+        
         self.__label = None
         self._filename = filename
         self.__tiepoints =  { }
         
-        if os.path.isfile(self.filename):
+        if self.filename != None and os.path.isfile(self.filename):
             with open(self.filename) as fio:
                 for line in fio:
                     v1, v2 = line.strip().split()
@@ -177,6 +180,9 @@ class Serie(object):
     def ties(self):
         return self._ties.copy()
     
+    def tie(self, value):
+        return self._ties[value]
+    
     @property
     def x_window(self):
         return self.__window(self.x)
@@ -263,12 +269,16 @@ class Serie(object):
         
         plt.subplot(2,1,1)
         plt.plot(self.x, self.y, label=self.filename)
+        for t in self.ties:
+            plt.axvline(self.tie(t), 0.1, 0.15, color='k')
         plt.plot(other.xm, other.ym, label=other.filename)
         plt.axvspan(self.begin, self.end, 0.1, 0.2, alpha=0.3, color='80', label='Used part from %s' % self.filename)
         plt.legend()
         
         plt.subplot(2,1,2)
         plt.plot(self.xm, self.ym, label=self.filename)
+        for t in other.ties:
+            plt.axvline(other.tie(t),0.1, 0.15, color='k')
         plt.plot(other.x, other.y, label=other.filename)
         plt.axvspan(other.begin, other.end, 0.1, 0.2, alpha=0.3, color='80', label='Used part from %s' % other.filename)
         plt.legend()
@@ -945,11 +955,14 @@ class MatchConfFile(object):
         '''
         This method try to guess the values for each penalties, algorithm 
         is taken directly from Matlab code from Lorraine's !! 
-            -- Need still to check numbers !
-        Don't blame me on that !
         '''
         sa = self.getSeries(1)
         sb = self.getSeries(2)
+        
+        if self._autonormalize:
+            print "Normalizing series (1) from %.1f to %.1f and series (2) from %.1f to %.1f" % (self.begin1, self.end1, self.begin2, self.end2)
+            sb.normalizeStd(True).save()
+            sb.normalizeStd(True).save()
         
         da = sa.y_window
         db = sb.y_window
@@ -1085,7 +1098,7 @@ class MatchConfFile(object):
         
         if update:
             setattr(self, parameter, best_value)
-            self.run(autosave = True)
+            self.run(autosave = True, plotresults=plot)
         
         if plot:
             _, ax1 = plt.subplots(figsize=(10,7))
@@ -1117,10 +1130,12 @@ class MatchConfFile(object):
         return s
     
     def report(self):
+        sa = self.getSeries(1)
+        sb = self.getSeries(2)
         print ""
         print " ** Series **"
-        print "%13s" % "Series:", self.series1, "begin:", self.begin1, "end:", self.end1, "num. Intervals:", self.numintervals1
-        print "%13s" % "Series:", self.series2, "begin:", self.begin2, "end:", self.end2, "num. Intervals:", self.numintervals2
+        print "%13s" % "Series:", self.series1, "begin:", self.begin1, "end:", self.end1, "num. Intervals:", self.numintervals1," len:",len(sa.x)
+        print "%13s" % "Series:", self.series2, "begin:", self.begin2, "end:", self.end2, "num. Intervals:", self.numintervals2," len:",len(sb.x)
         print ""
         print "%13s" % "speeds:", ",".join(self.speeds) if self.speeds else "-"
         print ""
@@ -1139,9 +1154,9 @@ class MatchConfFile(object):
         print "%13s" % "matchfile:", self.matchfile
         print "%13s" % "logfile:", self.logfile
         
-        if self.tiefile != "None":
+        if self.tiefile != None and self.tiefile != "":
             tt = Tie(self.tiefile)
-            print " ** Ties **"
+            print ""
+            print " ** Tie is Defined **"
             tt.report()
             print ""
-
