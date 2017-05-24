@@ -18,7 +18,6 @@
 import numpy as np
 import os
 from matplotlib import pyplot as plt
-from mpl_toolkits.basemap.proj import params
 
 class Tie(object):
     def __init__(self, filename):
