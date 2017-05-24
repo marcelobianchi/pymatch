@@ -1197,7 +1197,7 @@ class Optimizer(object):
         self.ys = None
     
     def nintervals(self, b1, e1, v1, b2, e2, v2):
-        self.test["nintervals"] = (b1, e1, v1, b2, e2, v2)
+        self.tests["nintervals"] = (b1, e1, v1, b2, e2, v2)
     
     def __run_nintervals(self, params):
         b1, e1, v1, b2, e2, v2 = params
