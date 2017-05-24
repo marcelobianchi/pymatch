@@ -1274,9 +1274,10 @@ class Optimizer(object):
         print "Average",len(self.mls),"objects"
         for x in self.mls:
             ynew = np.interp(self.xs, x.x1, x.x2)
-            self.wys = 1.0/x.rms()
+            self.wys.append(1.0/x.rms())
             self.ys.append(ynew)
         self.ys = np.array(self.ys)
+        self.wys = np.array(self.wys)
         
         ## Plot
         mys = np.average(self.ys, axis=0, weights = self.wys)
