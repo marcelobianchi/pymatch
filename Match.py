@@ -1265,8 +1265,8 @@ class Optimizer(object):
         xmin = min(self.mls[0].x1)
         xmax = max(self.mls[0].x1)
         for x in self.mls:
-            xmin = max(xmin, min(x.x1))
-            xmax = min(xmax, max(x.x1))
+            xmin = min(xmin, min(x.x1))
+            xmax = max(xmax, max(x.x1))
 
         self.xs = np.linspace(xmin, xmax, 100.)
         self.ys  = []
@@ -1280,8 +1280,8 @@ class Optimizer(object):
         if plot:
             plt.figure(figsize=(20,10))
             _  = map(lambda x: plt.plot(x.x1, x.x2), self.mls)
-            _ = plt.plot(self.xs, np.median(self.ys,axis=0), linewidth=6, color='w')
-            _ = plt.errorbar(self.xs, np.median(self.ys,axis=0), yerr = self.ys.std(axis=0), capsize=3, color='k')
+            _ = plt.plot(self.xs, np.mean(self.ys,axis=0), linewidth=6, color='w')
+            _ = plt.errorbar(self.xs, np.mean(self.ys,axis=0), yerr = self.ys.std(axis=0), capsize=3, color='k')
             
             ## _  = plt.legend(loc='upper left', ncol=2, shadow=False, bbox_to_anchor=(1.01, 1.0))
             
