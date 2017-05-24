@@ -1267,7 +1267,7 @@ class Optimizer(object):
             st = np.interp(t, xt, et)
         elif cm is not None and t is None:
             t = np.interp(cm, xcm, xt)
-            st = np.interp(t, xcm, et)
+            st = np.interp(cm, xcm, et)
         else:
             raise Exception("need cm or t")
         
