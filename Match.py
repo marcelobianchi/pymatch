@@ -1191,7 +1191,7 @@ class Optimizer(object):
     def __init__(self, mcf):
         self._mcf = mcf
         self.mls = None
-        self.test = {}
+        self.tests = {}
         
         self.xs = None
         self.ys = None
