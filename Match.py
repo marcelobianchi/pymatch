@@ -1280,8 +1280,8 @@ class Optimizer(object):
         if plot:
             plt.figure(figsize=(20,10))
             _  = map(lambda x: plt.plot(x.x1, x.x2), self.mls)
-            _ = plt.plot(self.xs, np.mean(self.ys,axis=0), linewidth=6, color='w')
-            _ = plt.errorbar(self.xs, np.mean(self.ys,axis=0), yerr = self.ys.std(axis=0), capsize=3, color='k')
+            _ = plt.plot(self.xs, np.median(self.ys,axis=0), linewidth=6, color='w')
+            _ = plt.errorbar(self.xs, np.median(self.ys,axis=0), yerr = self.ys.std(axis=0), capsize=3, color='k')
             
             ## _  = plt.legend(loc='upper left', ncol=2, shadow=False, bbox_to_anchor=(1.01, 1.0))
             
