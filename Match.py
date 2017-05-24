@@ -1243,7 +1243,7 @@ class Optimizer(object):
             print ""
     
     def __run(self, param, values):
-        self.mls.extend(self.mcf.optimize(param, values, True, False))
+        self.mls.extend(self._mcf.optimize(param, values, True, False))
     
     def run(self, plot = True):
         # Zero stats
