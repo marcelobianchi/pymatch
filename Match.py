@@ -1186,3 +1186,89 @@ class MatchConfFile(object):
             print " ** Tie is Defined **"
             tt.report()
             print ""
+
+class Optimizer(object):
+    def __init__(self, mcf):
+        self._mcf = mcf
+        self.mls = None
+        self.test = {}
+        
+        self.xs = None
+        self.ys = None
+    
+    def nintervals(self, b1, e1, v1, b2, e2, v2):
+        self.test["nintervals"] = (b1, e1, v1, b2, e2, v2)
+    
+    def __run_nintervals(self, params):
+        b1, e1, v1, b2, e2, v2 = params
+
+        stop = False
+        for i in range(4):
+            if stop: break
+        
+            before = self._mcf.numintervals1
+            ll = self._mcf.optimize("numintervals1", range(b1, e1, v1), True, False)
+            self.mls.extend(ll)
+            after = self._mcf.numintervals1
+        
+            stop = (before == after)
+            print "Numintervals1",i,before, after, stop
+            print ""
+        
+            before = self._mcf.numintervals2
+            ll = self._mcf.optimize("numintervals2", range(b2, e2, v2), True, False)
+            self.mls.extend(ll)
+            after = self._mcf.numintervals2
+        
+            stop = stop and (before == after)
+            print "Numintervals2",i,before, after, stop
+            print ""
+    
+    def run(self, plot = True):
+        # Zero stats
+        self.mls = list()
+        
+        ## Run tests
+        if "nintervals" in self.tests:
+            self.__run_nintervals(self.tests["nintervals"])
+
+        ## Estimate
+        xmin = min(self.mls[0].x1)
+        xmax = max(self.mls[0].x1)
+        for x in self.mls:
+            xmin = min(xmin, min(x.x1))
+            xmax = max(xmax, max(x.x1))
+
+        self.xs = np.linspace(xmin, xmax, 100.)
+        self.ys  = []
+        print "Average",len(self.mls),"objects"
+        for x in self.mls:
+            ynew = np.interp(self.xs, x.x1, x.x2)
+            self.ys.append(ynew)
+        self.ys = np.array(self.ys)
+        
+        ## Plot
+        if plot:
+            plt.figure(figsize=(20,10))
+            _  = map(lambda x: plt.plot(x.x1, x.x2), self.mls)
+            _ = plt.plot(self.xs, np.median(self.ys,axis=0), linewidth=6, color='w')
+            _ = plt.errorbar(self.xs, np.median(self.ys,axis=0), yerr = self.ys.std(axis=0), capsize=3, color='k')
+            ## _  = plt.legend(loc='upper left', ncol=2, shadow=False, bbox_to_anchor=(1.01, 1.0))
+            
+        return
+
+    def estimate(self, cm = None, t = None):
+        xcm = self.xs
+        xt  = np.median(self.ys(), axis=0)
+        et  = self.ys.std(axis=0)
+        
+        if cm is None and t is not None:
+            cm = np.interp(t, xt, xcm)
+            st = np.interp(t, xt, et)
+        elif cm is not None and t is None:
+            t = np.interp(cm, xcm, xt)
+            st = np.interp(t, xcm, et)
+        else:
+            raise Exception("need cm or t")
+        
+        return t, cm, st
