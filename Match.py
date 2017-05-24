@@ -1196,8 +1196,26 @@ class Optimizer(object):
         self.xs = None
         self.ys = None
     
-    def nintervals(self, b1, e1, v1, b2, e2, v2):
-        self.tests["nintervals"] = (b1, e1, v1, b2, e2, v2)
+    def targetspeed(self, values):
+        self.tests["targetspeed"] = values
+    
+    def nomatch(self, values):
+        self.tests["nomatch"] = values
+    
+    def speedchangepenalty(self, values):
+        self.tests["speedchangepenalty"] = values
+    
+    def speedpenalty(self, values):
+        self.tests["speedpenalty"] = values
+    
+    def gappenalty(self, values):
+        self.tests["gappenalty"] = values
+    
+    def tiepenalty(self, values):
+        self.tests["tiepenalty"] = values
+    
+    def nintervals(self, vals1_int1, vals_int2):
+        self.tests["nintervals"] = (vals1_int1, vals_int2)
     
     def __run_nintervals(self, params):
         b1, e1, v1, b2, e2, v2 = params
@@ -1224,13 +1242,24 @@ class Optimizer(object):
             print "Numintervals2",i,before, after, stop
             print ""
     
+    def __run(self, param, values):
+        self.mls.extend(self.mcf.optimize(param, values, True, False))
+    
     def run(self, plot = True):
         # Zero stats
         self.mls = list()
         
         ## Run tests
-        if "nintervals" in self.tests:
-            self.__run_nintervals(self.tests["nintervals"])
+        for k in ["nintervals", "targetspeed", "nomatch", "speedchangepenalty", "speedpenalty", "gappenalty", "tiepenalty"]:
+            if k not in self.tests:
+                print "Skipping optimize: %s" % k
+                continue
+            
+            if k == "nintervals":
+                self.__run_nintervals(self.tests[k])
+                continue
+            
+            self.__run(k, self.tests[k])
 
         ## Estimate
         xmin = min(self.mls[0].x1)
