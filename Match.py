@@ -1259,7 +1259,7 @@ class Optimizer(object):
 
     def estimate(self, cm = None, t = None):
         xcm = self.xs
-        xt  = np.median(self.ys(), axis=0)
+        xt  = np.median(self.ys, axis=0)
         et  = self.ys.std(axis=0)
         
         if cm is None and t is not None:
