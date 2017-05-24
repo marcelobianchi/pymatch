@@ -1287,6 +1287,9 @@ class Optimizer(object):
             _ = plt.plot(self.xs, mys, linewidth=6, color='w')
             _ = plt.errorbar(self.xs, mys, yerr = self.ys.std(axis=0), capsize=3, color='k')
             
+            plt.figure()
+            self._mcf.run(False, True)
+            
             ## _  = plt.legend(loc='upper left', ncol=2, shadow=False, bbox_to_anchor=(1.01, 1.0))
             
         return
