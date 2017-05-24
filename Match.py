@@ -18,6 +18,7 @@
 import numpy as np
 import os
 from matplotlib import pyplot as plt
+from mpl_toolkits.basemap.proj import params
 
 class Tie(object):
     def __init__(self, filename):
@@ -1218,14 +1219,14 @@ class Optimizer(object):
         self.tests["nintervals"] = (vals1_int1, vals_int2)
     
     def __run_nintervals(self, params):
-        b1, e1, v1, b2, e2, v2 = params
-
+        v1, v2 = params
+        
         stop = False
         for i in range(4):
             if stop: break
         
             before = self._mcf.numintervals1
-            ll = self._mcf.optimize("numintervals1", range(b1, e1, v1), True, False)
+            ll = self._mcf.optimize("numintervals1", v1, True, False)
             self.mls.extend(ll)
             after = self._mcf.numintervals1
         
@@ -1234,7 +1235,7 @@ class Optimizer(object):
             print ""
         
             before = self._mcf.numintervals2
-            ll = self._mcf.optimize("numintervals2", range(b2, e2, v2), True, False)
+            ll = self._mcf.optimize("numintervals2", v2, True, False)
             self.mls.extend(ll)
             after = self._mcf.numintervals2
         
