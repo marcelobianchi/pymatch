@@ -104,6 +104,7 @@ class Serie(object):
         self.__filename = filename
         self.begin = None
         self.end   = None
+        self._numintervals = None
         self.x     = None
         self.y     = None
         self.s     = None
@@ -171,6 +172,21 @@ class Serie(object):
             return var[ self.x >= s ]
 
         return var[ (self.x >= s) & (self.x <= e) ]
+    
+    @property
+    def numintervals(self):
+        return self._numintervals
+    
+    @numintervals.setter
+    def numintervals(self, value):
+        if value is None:
+            self._numintervals = 1
+            return
+        
+        if (len(self.x) / value) < 2:
+            raise Exception("Value of nintervals too high !")
+        
+        self._numintervals = value
     
     @property
     def filename(self):
@@ -297,23 +313,27 @@ class Serie(object):
         
         plt.legend()
     
-    def report(self):
-        print "Serie: Label: %s Filename: %s" %(self.label, self.filename)
-        print "\nStatistics:        %8s / %-8s"  % ("Full", "Window")
-        print " Number of Points: %8d / %-8d" % (len(self.x), len(self.x_window))
-        print "            x-Min: %8f / %-8f" % (self.x.min(), self.x_window.max())
-        print "            y-Min: %8f / %-8f" % (self.y.min(), self.y_window.min())
-        print "            y-Max: %8f / %-8f" % (self.y.max(), self.y_window.max())
-        print "           y-Mean: %8f / %-8f" % (self.y.mean(), self.y_window.mean())
-        print "          y-StdEv: %8f / %-8f" % (self.y.std(), self.y_window.std())
-        print "\nAssociated Information:"
-        print "   Begin is: %s and End is: %s" % (self.begin, self.end)
-        print "   Total of %d tie points." % (len(self.ties))
-        i = 0
-        for k,x in self.ties.iteritems():
-            print "      Tie #%d, Label: %s Position: %s" % (i, k, x)
-            i += 1
-        print ""
+    def report(self, simple = False):
+        if simple:
+            print "%13s" % "Series:", self.filename
+            print "%13s" % "","begin:", self.begin, "end:", self.end, "num. Intervals:", self.numintervals," len:",len(self.x)
+        else:
+            print "Serie: Label: %s Filename: %s" %(self.label, self.filename)
+            print "\nStatistics:        %8s / %-8s"  % ("Full", "Window")
+            print " Number of Points: %8d / %-8d" % (len(self.x), len(self.x_window))
+            print "            x-Min: %8f / %-8f" % (self.x.min(), self.x_window.max())
+            print "            y-Min: %8f / %-8f" % (self.y.min(), self.y_window.min())
+            print "            y-Max: %8f / %-8f" % (self.y.max(), self.y_window.max())
+            print "           y-Mean: %8f / %-8f" % (self.y.mean(), self.y_window.mean())
+            print "          y-StdEv: %8f / %-8f" % (self.y.std(), self.y_window.std())
+            print "\nAssociated Information:"
+            print "   Begin is: %s and End is: %s" % (self.begin, self.end)
+            print "   Total of %d tie points." % (len(self.ties))
+            i = 0
+            for k,x in self.ties.iteritems():
+                print "      Tie #%d, Label: %s Position: %s" % (i, k, x)
+                i += 1
+            print ""
 
 class MatchLog(object):
     def __init__(self, matchfile, logfile, sa = None, sb = None):
@@ -999,6 +1019,7 @@ class MatchConfFile(object):
             if self.series1 == None: raise Exception("Serie is Unset.")
             s = Serie(self.series1, '#1')
             s.setLimits(self.begin1, self.end1, cut = False)
+            s.numintervals = self.numintervals1
             if t:
                 map(lambda label: s.setTie(label, t.tie(label)[0]), t.tie_labels)
             return s
@@ -1006,6 +1027,7 @@ class MatchConfFile(object):
             if self.series2 == None: raise Exception("Serie is Unset.")
             s = Serie(self.series2, '#2')
             s.setLimits(self.begin2, self.end2, cut = False)
+            s.numintervals = self.numintervals2
             if t:
                 map(lambda label: s.setTie(label, t.tie(label)[1]), t.tie_labels)
             return s
@@ -1134,11 +1156,11 @@ class MatchConfFile(object):
         sb = self.getSeries(2)
         print ""
         print " ** Series **"
-        print "%13s" % "Series:", self.series1, "begin:", self.begin1, "end:", self.end1, "num. Intervals:", self.numintervals1," len:",len(sa.x)
-        print "%13s" % "Series:", self.series2, "begin:", self.begin2, "end:", self.end2, "num. Intervals:", self.numintervals2," len:",len(sb.x)
+        sa.report(simple = True)
         print ""
-        print "%13s" % "speeds:", ",".join(self.speeds) if self.speeds else "-"
+        sb.report(simple = True)
         print ""
+        
         print " ** Penalties **"
         print "%13s" % "nomatch:", self.nomatch
         print "%13s" % "speedpenalty:", self.speedpenalty
@@ -1147,6 +1169,10 @@ class MatchConfFile(object):
         print "%13s" % "tiepenalty:", self.tiepenalty
         print "%13s" % "gappenalty:", self.gappenalty
         print ""
+        
+        print "%13s" % "speeds:", ",".join(self.speeds) if self.speeds else "-"
+        print ""
+        
         print " ** Constrains & Files **"
         print "%13s" % "series1gaps:", self.series2gaps
         print "%13s" % "series2gaps:", self.series1gaps
