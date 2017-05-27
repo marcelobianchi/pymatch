@@ -1250,7 +1250,7 @@ class Optimizer(object):
         self.mls = list()
         
         ## Run tests
-        for k in ["nintervals", "targetspeed", "nomatch", "speedchangepenalty", "speedpenalty", "gappenalty", "tiepenalty"]:
+        for k in ["nintervals", "targetspeed", "nomatch", "speedchange", "speedpenalty", "gappenalty", "tiepenalty"]:
             if k not in self.tests:
                 print "Skipping optimize: %s" % k
                 continue
@@ -1293,7 +1293,7 @@ class Optimizer(object):
             ## _  = plt.legend(loc='upper left', ncol=2, shadow=False, bbox_to_anchor=(1.01, 1.0))
             
         return
-
+    
     def estimate(self, cm = None, t = None):
         xcm = self.xs
         xt  = np.median(self.ys, axis=0)
