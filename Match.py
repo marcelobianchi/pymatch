@@ -412,7 +412,7 @@ class MatchLog(object):
             xnew = np.linspace(min(sa.x), max(sb.xm), 2000)
             y1n = np.interp(xnew, sa.x, sa.y)
             y2n = np.interp(xnew, sb.xm, sb.ym)
-            self._cor = np.correlate(y1n, y2n)[0]
+            self._cor = np.correlate(y1n, y2n)[0]/float(len(y1n))
             
         return self._cor
     
@@ -938,6 +938,8 @@ class MatchConfFile(object):
         if exchanged:
             for f in first:
                 for l in last:
+                    if f == 0 or l == 0: continue
+                    #if l == f and l != 1: continue
                     item = "%d:%d" % (l,f)
                     if item not in items: items.append(item)
         
@@ -946,6 +948,8 @@ class MatchConfFile(object):
         
         for f in first:
             for l in last:
+                if f == 0 or l == 0: continue
+                #if l == f and l != 1: continue
                 item = "%d:%d" % (f,l)
                 if item not in items: items.append(item)
         
@@ -1107,10 +1111,10 @@ class MatchConfFile(object):
             self.clean()
             os.unlink("lala.conf")
             
-            if max_cor == None or results.correlation > max_cor:
+            CMAX = results.correlation
+            if max_cor == None or CMAX > max_cor:
                 best_value = v
-                max_cor = results.correlation
-            
+                max_cor = CMAX
             x.append(float(v) if not isinstance(v, str) else iv)
             s.append(results)
         
@@ -1193,28 +1197,37 @@ class Optimizer(object):
         self.mls = None
         self.tests = {}
         
+        self.orderactivated = [ ]
+        
         self.xs = None
         self.ys = None
     
     def targetspeed(self, values):
+        self.orderactivated.append("targetspeed")
         self.tests["targetspeed"] = values
     
     def nomatch(self, values):
+        self.orderactivated.append("nomatch")
         self.tests["nomatch"] = values
     
-    def speedchangepenalty(self, values):
-        self.tests["speedchangepenalty"] = values
+    def speedchange(self, values):
+        self.orderactivated.append("speedchange")
+        self.tests["speedchange"] = values
     
     def speedpenalty(self, values):
+        self.orderactivated.append("speedpenalty")
         self.tests["speedpenalty"] = values
     
     def gappenalty(self, values):
+        self.orderactivated.append("gappenalty")
         self.tests["gappenalty"] = values
-    
+
     def tiepenalty(self, values):
+        self.orderactivated.append("tiepenalty")
         self.tests["tiepenalty"] = values
     
     def nintervals(self, vals1_int1, vals_int2):
+        self.orderactivated.append("nintervals")
         self.tests["nintervals"] = (vals1_int1, vals_int2)
     
     def __run_nintervals(self, params):
@@ -1245,6 +1258,60 @@ class Optimizer(object):
     def __run(self, param, values):
         self.mls.extend(self._mcf.optimize(param, values, True, False))
     
+    def run_ordered(self, plot = True):
+        # Zero stats
+        self.mls = list()
+        
+        ## Run tests
+        for k in self.orderactivated:
+            if k not in self.tests:
+                print "Skipping optimize: %s" % k
+                continue
+            
+            if k == "nintervals":
+                self.__run_nintervals(self.tests[k])
+                continue
+            
+            self.__run(k, self.tests[k])
+
+        if not self.mls:
+            self.orderactivated = []
+            print "No test was performed."
+            return
+        ## Estimate
+        xmin = min(self.mls[0].x1)
+        xmax = max(self.mls[0].x1)
+        for x in self.mls:
+            xmin = min(xmin, min(x.x1))
+            xmax = max(xmax, max(x.x1))
+
+        self.xs = np.linspace(xmin, xmax, 100.)
+        self.ys  = []
+        self.wys = []
+        print "Average",len(self.mls),"objects"
+        for x in self.mls:
+            ynew = np.interp(self.xs, x.x1, x.x2)
+            self.wys.append(1.0/x.rms)
+            self.ys.append(ynew)
+        self.ys = np.array(self.ys)
+        self.wys = np.array(self.wys)
+        
+        ## Plot
+        mys = np.average(self.ys, axis=0, weights = self.wys)
+        if plot:
+            plt.figure(figsize=(20,10))
+            _  = map(lambda x: plt.plot(x.x1, x.x2), self.mls)
+            _ = plt.plot(self.xs, mys, linewidth=6, color='w')
+            _ = plt.errorbar(self.xs, mys, yerr = self.ys.std(axis=0), capsize=3, color='k')
+            
+            plt.figure()
+            self._mcf.run(False, True)
+            
+            ## _  = plt.legend(loc='upper left', ncol=2, shadow=False, bbox_to_anchor=(1.01, 1.0))
+            
+        self.orderactivated = []
+        return
+
     def run(self, plot = True):
         # Zero stats
         self.mls = list()
