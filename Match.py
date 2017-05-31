@@ -16,7 +16,7 @@
 #     along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
 
 import numpy as np
-import os
+import os, sys
 from matplotlib import pyplot as plt
 
 class Tie(object):
@@ -1195,39 +1195,53 @@ class Optimizer(object):
     def __init__(self, mcf):
         self._mcf = mcf
         self.mls = None
+        
+        # This is for run, one per 
+        # param using Lisiecks order
         self.tests = {}
         
+        # Those are for ordered running
         self.orderactivated = [ ]
+        self.orderedparams = [ ]
         
         self.xs = None
         self.ys = None
     
+    ''' Optimization parameters
+    '''
     def targetspeed(self, values):
         self.orderactivated.append("targetspeed")
+        self.orderedparams.append(values)
         self.tests["targetspeed"] = values
     
     def nomatch(self, values):
         self.orderactivated.append("nomatch")
+        self.orderedparams.append(values)
         self.tests["nomatch"] = values
     
     def speedchange(self, values):
         self.orderactivated.append("speedchange")
+        self.orderedparams.append(values)
         self.tests["speedchange"] = values
     
     def speedpenalty(self, values):
         self.orderactivated.append("speedpenalty")
+        self.orderedparams.append(values)
         self.tests["speedpenalty"] = values
     
     def gappenalty(self, values):
         self.orderactivated.append("gappenalty")
+        self.orderedparams.append(values)
         self.tests["gappenalty"] = values
 
     def tiepenalty(self, values):
         self.orderactivated.append("tiepenalty")
+        self.orderedparams.append(values)
         self.tests["tiepenalty"] = values
     
     def nintervals(self, vals1_int1, vals_int2):
         self.orderactivated.append("nintervals")
+        self.orderedparams.append((vals1_int1, vals_int2))
         self.tests["nintervals"] = (vals1_int1, vals_int2)
     
     def __run_nintervals(self, params):
@@ -1258,65 +1272,80 @@ class Optimizer(object):
     def __run(self, param, values):
         self.mls.extend(self._mcf.optimize(param, values, True, False))
     
+    ''' Utility methods
+    '''
+    def plot_results(self):
+        xs, mys, eys = self.median_estimate()
+        
+        l = self._mcf.run(False, True)
+        
+        plt.figure(figsize=(20,10))
+        _  = map(lambda x: plt.plot(x.x1, x.x2), self.mls)
+        _ = plt.plot(xs, mys, linewidth=6, color='w')
+        _ = plt.plot(l.x1, l.x2, linewidth=12)
+        _ = plt.errorbar(xs, mys, yerr = eys, capsize=3, color='k')
+        
+        plt.figure(figsize=(20,10))
+        
+        l.sa.plotcomp(l.sb)
+        ## _  = plt.legend(loc='upper left', ncol=2, shadow=False, bbox_to_anchor=(1.01, 1.0))
+        
+        return
+    
+    def median_estimate(self):
+        mys = None
+        eys = None
+        
+        if self.mls:
+            xmin = min(self.mls[0].x1)
+            xmax = max(self.mls[0].x1)
+            for x in self.mls:
+                xmin = min(xmin, min(x.x1))
+                xmax = max(xmax, max(x.x1))
+            
+            xs = np.linspace(xmin, xmax, 100.)
+            ys  = []
+            wys = []
+            
+            print "Average",len(self.mls),"objects"
+            for x in self.mls:
+                ynew = np.interp(xs, x.x1, x.x2)
+                ys.append(ynew)
+                wys.append(1.0/x.rms)
+                
+            ys = np.array(ys)
+            wys = np.array(wys)
+            
+            mys = np.average(ys, axis=0, weights = wys)
+            eys = np.std(ys, axis=0)
+        return (xs, mys, eys)
+    
     def run_ordered(self, plot = True):
-        # Zero stats
         self.mls = list()
         
-        ## Run tests
-        for k in self.orderactivated:
-            if k not in self.tests:
-                print "Skipping optimize: %s" % k
-                continue
-            
+        for k,v in zip(self.orderactivated, self.orderedparams):
             if k == "nintervals":
-                self.__run_nintervals(self.tests[k])
+                self.__run_nintervals(v)
                 continue
-            
-            self.__run(k, self.tests[k])
-
+            self.__run(k, v)
+        
         if not self.mls:
             self.orderactivated = []
+            self.orderedparams  = []
             print "No test was performed."
             return
-        ## Estimate
-        xmin = min(self.mls[0].x1)
-        xmax = max(self.mls[0].x1)
-        for x in self.mls:
-            xmin = min(xmin, min(x.x1))
-            xmax = max(xmax, max(x.x1))
-
-        self.xs = np.linspace(xmin, xmax, 100.)
-        self.ys  = []
-        self.wys = []
-        print "Average",len(self.mls),"objects"
-        for x in self.mls:
-            ynew = np.interp(self.xs, x.x1, x.x2)
-            self.wys.append(1.0/x.rms)
-            self.ys.append(ynew)
-        self.ys = np.array(self.ys)
-        self.wys = np.array(self.wys)
         
-        ## Plot
-        mys = np.average(self.ys, axis=0, weights = self.wys)
         if plot:
-            plt.figure(figsize=(20,10))
-            _  = map(lambda x: plt.plot(x.x1, x.x2), self.mls)
-            _ = plt.plot(self.xs, mys, linewidth=6, color='w')
-            _ = plt.errorbar(self.xs, mys, yerr = self.ys.std(axis=0), capsize=3, color='k')
-            
-            plt.figure()
-            self._mcf.run(False, True)
-            
-            ## _  = plt.legend(loc='upper left', ncol=2, shadow=False, bbox_to_anchor=(1.01, 1.0))
-            
+            self.plot_results()
+        
         self.orderactivated = []
+        self.orderedparams  = []
+        
         return
-
+    
     def run(self, plot = True):
-        # Zero stats
         self.mls = list()
         
-        ## Run tests
         for k in ["nintervals", "targetspeed", "nomatch", "speedchange", "speedpenalty", "gappenalty", "tiepenalty"]:
             if k not in self.tests:
                 print "Skipping optimize: %s" % k
@@ -1327,44 +1356,20 @@ class Optimizer(object):
                 continue
             
             self.__run(k, self.tests[k])
-
-        ## Estimate
-        xmin = min(self.mls[0].x1)
-        xmax = max(self.mls[0].x1)
-        for x in self.mls:
-            xmin = min(xmin, min(x.x1))
-            xmax = max(xmax, max(x.x1))
-
-        self.xs = np.linspace(xmin, xmax, 100.)
-        self.ys  = []
-        self.wys = []
-        print "Average",len(self.mls),"objects"
-        for x in self.mls:
-            ynew = np.interp(self.xs, x.x1, x.x2)
-            self.wys.append(1.0/x.rms)
-            self.ys.append(ynew)
-        self.ys = np.array(self.ys)
-        self.wys = np.array(self.wys)
         
-        ## Plot
-        mys = np.average(self.ys, axis=0, weights = self.wys)
+        if not self.mls:
+            self.tests = {}
+            print "No test was performed."
+            return
+        
         if plot:
-            plt.figure(figsize=(20,10))
-            _  = map(lambda x: plt.plot(x.x1, x.x2), self.mls)
-            _ = plt.plot(self.xs, mys, linewidth=6, color='w')
-            _ = plt.errorbar(self.xs, mys, yerr = self.ys.std(axis=0), capsize=3, color='k')
-            
-            plt.figure()
-            self._mcf.run(False, True)
-            
-            ## _  = plt.legend(loc='upper left', ncol=2, shadow=False, bbox_to_anchor=(1.01, 1.0))
-            
+            self.plot_results()
+        
+        self.tests = {}
         return
     
     def estimate(self, cm = None, t = None):
-        xcm = self.xs
-        xt  = np.median(self.ys, axis=0)
-        et  = self.ys.std(axis=0)
+        xcm, xt, et = self.median_estimate()
         
         if cm is None and t is not None:
             cm = np.interp(t, xt, xcm)
@@ -1376,3 +1381,43 @@ class Optimizer(object):
             raise Exception("need cm or t")
         
         return t, cm, st
+    
+    def export_csv(self, filename_or_file = sys.stdout, sep=","):
+        need_close = False
+        
+        if isinstance(filename_or_file, str):
+            need_close = True
+            filename_or_file = open(filename_or_file, "w")
+        
+        xs, ys, eys = self.median_estimate()
+        for x, y, e in zip(xs,ys,eys):
+            print >>filename_or_file, "%f%s%f%s%f" % (x,sep,y,sep,e)
+        
+        if need_close:
+            filename_or_file.close()
+        
+        return
+    
+    def curves(self):
+        sa = self._mcf.getSeries(1)
+        sb = self._mcf.getSeries(2)
+        
+        plt.figure(figsize=(20,10))
+        
+        plt.subplot(1,2,1)
+        xa = sa.x
+        va = sa.y
+        
+        xb = sb.x
+        vb = sb.y
+        
+        xat, _, _ = self.estimate(cm=xa)
+        _, xbx, _ = self.estimate(t=xb)
+        
+        plt.subplot(1,2,1)
+        plt.plot(xa, va, "r", xbx, vb, "k")
+        
+        plt.subplot(1,2,2)
+        plt.plot(xat, va, "r", xb, vb, "k")
+
+    
