@@ -1299,11 +1299,14 @@ class Optimizer(object):
         if self.mls:
             xmin = min(self.mls[0].x1)
             xmax = max(self.mls[0].x1)
+            xlen = len(self.mls[0].x1)
             for x in self.mls:
+                xlen = max(xlen, len(x.x1))
                 xmin = min(xmin, min(x.x1))
                 xmax = max(xmax, max(x.x1))
             
-            xs = np.linspace(xmin, xmax, 100.)
+            # We Use 2xLength of curves given by Lisiecks
+            xs = np.linspace(xmin, xmax, 2*xlen)
             ys  = []
             wys = []
             
