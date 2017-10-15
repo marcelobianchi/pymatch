@@ -412,7 +412,10 @@ class MatchLog(object):
             xnew = np.linspace(min(sa.x), max(sb.xm), 2000)
             y1n = np.interp(xnew, sa.x, sa.y)
             y2n = np.interp(xnew, sb.xm, sb.ym)
-            self._cor = np.correlate(y1n, y2n)[0]/float(len(y1n))
+            
+            a = np.correlate(y1n,y1n)[0]
+            b = np.correlate(y2n,y2n)[0]
+            self._cor = np.correlate(y1n, y2n)[0]/np.sqrt(a*b)
             
         return self._cor
     
@@ -462,7 +465,7 @@ class MatchConfFile(object):
     ##
     _MATCHCMD = "./match" 
     
-    def __init__(self, filename, autonormalize = False):
+    def __init__(self, filename, autonormalize = False, optmization_method = "Total_Score"):
         self._series1 = None
         self._begin1  = None
         self._end1    = None
@@ -485,6 +488,10 @@ class MatchConfFile(object):
         self._issaved = False
         
         self._autonormalize = autonormalize
+        if optmization_method.upper() not in [ "RMS", "CORRELATION", "TOTAL_SCORE" ]:
+            raise Exception('Wrong optimization method, use one of: "RMS", "CORRELATION", "TOTAL_SCORE"')
+        
+        self._optimize_method = optmization_method.upper()
         
         # These are property
         self._speeds =  []
@@ -1021,7 +1028,7 @@ class MatchConfFile(object):
         t = Tie(self.tiefile) if self.tiefile != None else None
         if which == 1:
             if self.series1 == None: raise Exception("Serie is Unset.")
-            s = Serie(self.series1, '#1')
+            s = Serie(self.series1, "#1: " + self.series1)
             s.setLimits(self.begin1, self.end1, cut = False)
             s.numintervals = self.numintervals1
             if t:
@@ -1029,7 +1036,7 @@ class MatchConfFile(object):
             return s
         elif which == 2:
             if self.series2 == None: raise Exception("Serie is Unset.")
-            s = Serie(self.series2, '#2')
+            s = Serie(self.series2, "#2: " + self.series2)
             s.setLimits(self.begin2, self.end2, cut = False)
             s.numintervals = self.numintervals2
             if t:
@@ -1087,9 +1094,9 @@ class MatchConfFile(object):
         x   = []
         s   = []
         
-        print "Working on optimizing %s from %s - %s" % (parameter, values[0], values[-1]) 
+        if plot: print "Working on optimizing %s from %s - %s" % (parameter, values[0], values[-1]) 
         best_value = None
-        max_cor    = None
+        max_metric    = None
         original_filename = self.filename
         pcount     = 0
         rounds = 0
@@ -1098,7 +1105,7 @@ class MatchConfFile(object):
                 if pcount in  [5,10,15, 20, 25, 30, 35, 40]: print " ",
                 if pcount == 45:
                     rounds += 1
-                    print "%03s %%" % ((100*rounds*45)/len(values))
+                    if plot: print "%03s %%" % ((100*rounds*45)/len(values))
                     pcount = 0
                 print ".",
                 if iv == len(values)-1: print "100 %"
@@ -1111,16 +1118,24 @@ class MatchConfFile(object):
             self.clean()
             os.unlink("lala.conf")
             
-            CMAX = results.correlation
-            if max_cor == None or CMAX > max_cor:
+            if self._optimize_method == "RMS":
+                CMAX = results.rms
+            elif self._optimize_method == "CORRELATION":
+                CMAX = (1.0 - results.correlation)
+            elif self._optimize_method == "TOTAL_SCORE":
+                CMAX = results.scores["Total"]
+            else:
+                raise Exception("Bad Optimization Method -- use one of: 'RMS', 'CORRELATION', 'TOTAL_SCORE'")
+            
+            if max_metric == None or CMAX < max_metric:
                 best_value = v
-                max_cor = CMAX
+                max_metric = CMAX
             x.append(float(v) if not isinstance(v, str) else iv)
             s.append(results)
         
         self.__set_filename(original_filename)
         
-        print "Final parameter %s = %s"  % (parameter, best_value)
+        if plot: print "Final parameter %s = %s"  % (parameter, best_value)
         
         if update:
             setattr(self, parameter, best_value)
@@ -1233,7 +1248,7 @@ class Optimizer(object):
         self.orderactivated.append("gappenalty")
         self.orderedparams.append(values)
         self.tests["gappenalty"] = values
-
+    
     def tiepenalty(self, values):
         self.orderactivated.append("tiepenalty")
         self.orderedparams.append(values)
@@ -1248,7 +1263,7 @@ class Optimizer(object):
         v1, v2 = params
         
         stop = False
-        for i in range(4):
+        for _ in range(6):
             if stop: break
         
             before = self._mcf.numintervals1
@@ -1257,8 +1272,6 @@ class Optimizer(object):
             after = self._mcf.numintervals1
         
             stop = (before == after)
-            print "Numintervals1",i,before, after, stop
-            print ""
         
             before = self._mcf.numintervals2
             ll = self._mcf.optimize("numintervals2", v2, True, False)
@@ -1266,33 +1279,44 @@ class Optimizer(object):
             after = self._mcf.numintervals2
         
             stop = stop and (before == after)
-            print "Numintervals2",i,before, after, stop
-            print ""
+
+        print "Nintervals1 from ",v1[0]," to ",v1[-1]," is: ",getattr(self._mcf, "numintervals1")
+        print "Nintervals2 from ",v2[0]," to ",v2[-1]," is: ",getattr(self._mcf, "numintervals2")
     
     def __run(self, param, values):
         self.mls.extend(self._mcf.optimize(param, values, True, False))
+        print param," from ",values[0]," to ",values[-1]," is: ",getattr(self._mcf, param)
     
     ''' Utility methods
     '''
     def plot_results(self):
         xs, mys, eys = self.median_estimate()
         
-        l = self._mcf.run(False, True)
+        l = self._mcf.run(False, False)
         
         plt.figure(figsize=(20,10))
+        
+        # All Fits
+        ##
         _  = map(lambda x: plt.plot(x.x1, x.x2), self.mls)
-        _ = plt.plot(xs, mys, linewidth=6, color='w')
-        _ = plt.plot(l.x1, l.x2, linewidth=12)
-        _ = plt.errorbar(xs, mys, yerr = eys, capsize=3, color='k')
         
-        plt.figure(figsize=(20,10))
+        # Best fit
+        ##
+        _ = plt.plot(l.x1, l.x2, '--', lw=22, c="w", zorder=5, alpha=0.7)
         
+        # Average Line
+        ##
+        _ = plt.plot(xs, mys, lw=2, c='k', zorder=10)
+        _ = plt.errorbar(xs, mys, yerr = eys, lw=2, capsize=3, color='k', zorder=10)
+        
+        plt.figure(figsize=(18,10))
         l.sa.plotcomp(l.sb)
         ## _  = plt.legend(loc='upper left', ncol=2, shadow=False, bbox_to_anchor=(1.01, 1.0))
         
         return
     
-    def median_estimate(self):
+    def median_estimate(self, power = 4.0, limit = 1.0):
+        xs  = None
         mys = None
         eys = None
         
@@ -1310,21 +1334,37 @@ class Optimizer(object):
             ys  = []
             wys = []
             
-            print "Average",len(self.mls),"objects"
+            # print "Average",len(self.mls),"objects"
             for x in self.mls:
-                ynew = np.interp(xs, x.x1, x.x2)
-                ys.append(ynew)
-                wys.append(1.0/x.rms)
-                
-            ys = np.array(ys)
-            wys = np.array(wys)
+                if limit is not None and (1-x.correlation) > limit: continue
+                ys.append(np.interp(xs, x.x1, x.x2, left = np.nan, right = np.nan))
+                wys.append(1.0/(1.0-x.correlation))
             
-            mys = np.average(ys, axis=0, weights = wys)
-            eys = np.std(ys, axis=0)
+            if len(ys) == 0:
+                raise Exception("No good fit exists --- run again !")
+            
+            ##
+            # Go to masked array
+            #
+            ys = np.array(ys)
+            ys = np.ma.array(ys, mask=np.isnan(ys))
+            
+            ##
+            # Process weights
+            #
+            wys = np.array(wys)**power
+            
+            ##
+            # Compute average
+            #
+            mys = np.ma.average(ys, axis=0, weights = wys)
+            variance = np.ma.average((ys-mys)**2, weights=wys, axis=0)
+            eys = np.sqrt(variance)
+        
         return (xs, mys, eys)
     
     def run_ordered(self, plot = True):
-        self.mls = list()
+        if self.mls is None: self.mls = list()
         
         for k,v in zip(self.orderactivated, self.orderedparams):
             if k == "nintervals":
@@ -1335,7 +1375,7 @@ class Optimizer(object):
         if not self.mls:
             self.orderactivated = []
             self.orderedparams  = []
-            print "No test was performed."
+            print " -- No tests was performed. -- "
             return
         
         if plot:
@@ -1362,7 +1402,7 @@ class Optimizer(object):
         
         if not self.mls:
             self.tests = {}
-            print "No test was performed."
+            print " -- No tests was performed. -- "
             return
         
         if plot:
@@ -1370,16 +1410,17 @@ class Optimizer(object):
         
         self.tests = {}
         return
+        return
     
     def estimate(self, cm = None, t = None):
         xcm, xt, et = self.median_estimate()
         
         if cm is None and t is not None:
-            cm = np.interp(t, xt, xcm)
-            st = np.interp(t, xt, et)
+            cm = np.interp(t, xt, xcm, left = np.nan, right = np.nan)
+            st = np.interp(t, xt, et, left = np.nan, right = np.nan)
         elif cm is not None and t is None:
-            t = np.interp(cm, xcm, xt)
-            st = np.interp(cm, xcm, et)
+            t = np.interp(cm, xcm, xt, left = np.nan, right = np.nan)
+            st = np.interp(cm, xcm, et, left = np.nan, right = np.nan)
         else:
             raise Exception("need cm or t")
         
@@ -1401,26 +1442,44 @@ class Optimizer(object):
         
         return
     
-    def curves(self):
+    def curves_fitted(self):
         sa = self._mcf.getSeries(1)
         sb = self._mcf.getSeries(2)
         
-        plt.figure(figsize=(20,10))
-        
-        plt.subplot(1,2,1)
         xa = sa.x
         va = sa.y
         
         xb = sb.x
         vb = sb.y
         
-        xat, _, _ = self.estimate(cm=xa)
-        _, xbx, _ = self.estimate(t=xb)
+        xat, _, sta = self.estimate(cm=xa)
+        _, xbx, stb = self.estimate(t=xb)
+
+        #
+        # Clean UP np.nan from output
+        #
+        A = np.array([xa, xat, sta, va])
+        A = A.transpose()
+        A = A[~np.isnan(A).any(axis=1)]
+        xa, xat, sta, va = A.transpose()
+        
+        B = np.array([xbx, xb, stb, vb])
+        B = B.transpose()
+        B = B[~np.isnan(B).any(axis=1)]
+        xbx, xb, stb, vb = B.transpose()
+        
+        return xa, xat, sta, va, xbx, xb, stb, vb
+    
+    def curves(self):
+        plt.figure(figsize=(20,10))
+        
+        xa, xat, _, va, xbx, xb, _, vb = self.curves_fitted()
         
         plt.subplot(1,2,1)
         plt.plot(xa, va, "r", xbx, vb, "k")
         
         plt.subplot(1,2,2)
         plt.plot(xat, va, "r", xb, vb, "k")
-
+        
+        return
     
