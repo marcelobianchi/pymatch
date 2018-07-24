@@ -1,0 +1,53 @@
+diff -Naur Match-2.3.1-original/Match/config.cc Match-2.3.1/Match/config.cc
+--- Match-2.3.1-original/Match/config.cc	2018-07-24 18:08:36.282720409 -0300
++++ Match-2.3.1/Match/config.cc	2018-07-24 18:08:54.642561076 -0300
+@@ -33,6 +33,7 @@
+ #include <iostream>
+ #include <stdio.h>
+ #include "config.hh"
++#include <stdlib.h>
+ 
+ namespace std {}
+ using namespace std;
+diff -Naur Match-2.3.1-original/Match/match.cc Match-2.3.1/Match/match.cc
+--- Match-2.3.1-original/Match/match.cc	2018-07-24 18:08:36.282720409 -0300
++++ Match-2.3.1/Match/match.cc	2018-07-24 18:08:54.642561076 -0300
+@@ -38,8 +38,13 @@
+ #include "config.hh"
+ #include "normalize.hh"
+ #include "assert.h"
++#include <string.h>
++
++#include <string.h>
++#include <stdlib.h>
+ 
+ namespace std {}
++
+ using namespace std;
+ 
+ #define TIE_NO_MATCH_PEN 1.0e6
+diff -Naur Match-2.3.1-original/Match/series.cc Match-2.3.1/Match/series.cc
+--- Match-2.3.1-original/Match/series.cc	2018-07-24 18:08:36.286720374 -0300
++++ Match-2.3.1/Match/series.cc	2018-07-24 18:09:16.330372769 -0300
+@@ -126,7 +126,7 @@
+     for(int j=0; j<c.size; j++)
+       out << c[j].x << " " << c[j].y << endl;
+   }
+-  return out;
++  return (bool)out;
+ }
+ 
+ bool writefile(string name,series &s, int signalnum) {
+diff -Naur Match-2.3.1-original/Match/series.hh Match-2.3.1/Match/series.hh
+--- Match-2.3.1-original/Match/series.hh	2018-07-24 18:08:36.286720374 -0300
++++ Match-2.3.1/Match/series.hh	2018-07-24 18:08:54.642561076 -0300
+@@ -42,6 +42,9 @@
+ #include <stdexcept>
+ #include "assert.h"
+ 
++#include <stdlib.h>
++#include <string.h>
++
+ namespace std {}
+ using namespace std;
+ 
