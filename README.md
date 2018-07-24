@@ -21,9 +21,13 @@ Marcelo B. de Bianchi / m.bianchi@iag.usp.br
 
 ## What it is?
 
-This is an interface to the Match package developed by Lorraine Lisiecki which implements a method for alignement of data series with similar shape. For a complete description of the method please check:
+This is an interface to the Match package developed by Lorraine Lisiecki which 
+implements a method for alignement of data series with similar shape. For a 
+complete description of the method please check:
 
-Lisiecki, L. E., and P. A. Lisiecki, Application of dynamic programming to the correlation of paleoclimate records, Paleoceanography, 17(D4), 1049, doi:10.1029/2001PA000733, 2002.
+Lisiecki, L. E., and P. A. Lisiecki, Application of dynamic programming to 
+the correlation of paleoclimate records, Paleoceanography, 17(D4), 1049, 
+doi:10.1029/2001PA000733, 2002.
 
 Match package is available from: http://www.lorraine-lisiecki.com/match.html
 
@@ -39,7 +43,10 @@ The package comes with:
  2. A Python package (Match.py) with classes that represents the
    1. Data Serie file as used by Match (Class Serie)
    2. A match config file with capabilities to run match from within Python ambient (MatchConfFile)
- 3. A Jupyter Notebook demonstrating all capabilities of the MatchPyGui classes for easy startup
+   3. A match log file
+   4. An optimization class that runs match while accumulating match log files objects that could
+      be used to obtain an age-model.
+ 3. A Jupyter Notebook demonstrating some capabilities of the MatchPyGui classes for easy startup
 
 ## How do I start?
 

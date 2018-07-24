@@ -1,25 +1,32 @@
 #! /usr/bin/python
+#
+################################################################################
+#     This file is part of PyMatchInterface.                                   #
+#                                                                              #
+#     PyMatchInterface is free software: you can redistribute it and/or modify #
+#     it under the terms of the GNU General Public License as published by     #
+#     the Free Software Foundation, either version 3 of the License, or        #
+#     (at your option) any later version.                                      #
+#                                                                              #
+#     PyMatchInterface is distributed in the hope that it will be useful,      #
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of           #
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the             #
+#     GNU General Public License for more details.                             #
+#                                                                              #
+#     You should have received a copy of the GNU General Public License        #
+#     along with PyMatchInterface.  If not, see <http://www.gnu.org/licenses/>.#
+################################################################################
 
-#     This file is part of PyMatchInterface.
-# 
-#     PyMatchInterface is free software: you can redistribute it and/or modify
-#     it under the terms of the GNU General Public License as published by
-#     the Free Software Foundation, either version 3 of the License, or
-#     (at your option) any later version.
-# 
-#     Foobar is distributed in the hope that it will be useful,
-#     but WITHOUT ANY WARRANTY; without even the implied warranty of
-#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#     GNU General Public License for more details.
-# 
-#     You should have received a copy of the GNU General Public License
-#     along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
-
-import numpy as np
 import os, sys
+import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib import gridspec
 
 class Tie(object):
+    ''' Represents a tie file as loaded by match. Can be created from a file,
+    or from none. A tie file is a file with two columns with values related
+    to positions in different series.
+    '''
     def __init__(self, filename):
         if filename == "":
             raise Exception("Need a valid filename or None")
@@ -62,7 +69,7 @@ class Tie(object):
             self.__label = "".join(map(lambda x: chr(x), indices))
         return self.__label
     
-    ''' Utils
+    ''' Utilities methods
     '''
     def set_tie(self, value_one, value_two, segment_one = 0, segment_two = 0, label = None):
         label = label if label != None else self.nextlabel
@@ -77,6 +84,8 @@ class Tie(object):
         return self.save()
     
     def save(self):
+        if self.filename is None:
+            raise Exception("Bad filename for saving tie - give me a name first!")
         fio = open(self.filename, "w")
         for label in self.tie_labels:
             v1, v2, _, _ = self.tie(label)
@@ -94,11 +103,12 @@ class Tie(object):
 
 class Serie(object):
     '''
-    Represents one 1D series, can be 2 or 3 columns,
-    exports self.x, self.y and self.s. Is capable of:
-
-        Normalize :: 
-            -0.5 -> 0.5 or to scale any other Series given
+    Represents one 1D series, can be 2 or 3 columns.
+    If a file name ".new" exists, read it and assumes
+    it is the matched version of the Serie.
+    
+    The class should be created from a filename, the filename is a two column
+    file with data points, normally depth / value or time / value.
     '''
     def __init__(self, filename, label = None):
         self.__filename = filename
@@ -139,7 +149,7 @@ class Serie(object):
     
     def setLimits(self, begin = None, end = None, cut = False):
         '''
-        Sets data series usefull limits
+        Sets data series useful limits
         '''
         if begin and end and begin >= end: 
             raise Exception("Begin should be smaller than end !")
@@ -183,8 +193,8 @@ class Serie(object):
             self._numintervals = 1
             return
         
-        if (len(self.x) / value) < 2:
-            raise Exception("Value of nintervals too high !")
+        #if (len(self.x) / value) < 2:
+        #    raise Exception("Value of nintervals too high !")
         
         self._numintervals = value
     
@@ -336,6 +346,12 @@ class Serie(object):
             print ""
 
 class MatchLog(object):
+    '''
+    This object represents a log file from a match run.
+    It loads it up, all the scores and penalties. Also computes the correlation
+    between the time series. It also holds all params used to run match.
+    '''
+    
     def __init__(self, matchfile, logfile, sa = None, sb = None):
         self.logfile   = logfile
         self.matchfile = matchfile
@@ -440,26 +456,101 @@ class MatchLog(object):
         return self._rms
     
     def plot(self):
-        labels = ["Total", "point", "nomatch", "speed", "speedchange", "tie", "gap", "tie nomatch"]
+        labels = ["Total", "point", "nomatch", "speed", "speedchange", "tie", "gap", "tie nomatch", "rms", "corr."]
         
+        plt.figure(figsize=(15,9))
+        gs = gridspec.GridSpec(1, 2, width_ratios=[1, 3])
+
         # Bar Plot
-        values = map(lambda x: self.scores[x], labels)
+        ##
+        values = map(lambda x: self.scores[x], labels[:-2])
         positions = range(len(labels))
-        plt.figure(figsize=(15,3))
-        plt.bar(positions, values, align='center')
-        plt.xticks(positions, labels)
-        plt.ylabel("Score")
+        values.append(self.rms)
+        values.append(self.correlation)
         
-        # Sedimentation Ratio
-        _, ax1 = plt.subplots(figsize=(10,7))
-        ax1.plot(self.x1, self.x2)
+        ax0 = plt.subplot(gs[0])
+        for pos,_ in enumerate(labels):
+            ax0.text(0.1, pos, str("%.3f" %  values[pos]), fontsize=20, horizontalalignment='left', verticalalignment='center')
+        ax0.barh(positions, values, align='center')
+        plt.yticks(positions, labels, rotation=0)
+        plt.xlabel("Score")
+        
+        # age-model plot
+        ax1 = plt.subplot(gs[1])
+        ax1.plot(self.x2, self.x1,"-", c="black", lw=2, label="Fitted age-model")
+        plt.xlabel("#2 x-value")
+        plt.ylabel("#1 x-value")
+        plt.legend(loc=1)
+        
         
         if self.sb != None:
             ax2 = ax1.twinx()
-            ax2.plot(self.sb.xm, self.sb.ym)
-            ax2.set_ylim(min(self.sb.ym),max(self.sb.ym)*15)
+            
+            ax2.plot(self.sb.x, self.sb.y,'--.', c="orange", label="%s" % self.sb.label)
+            ax2.plot(self.sa.xm, self.sa.ym,'-', c="red", label=self.sa.label)
+            vv1 = min(self.sb.ym.min(), self.sa.y.min())
+            vv2 = max(self.sb.ym.max(), self.sa.y.max())
+            ax2.set_ylim([vv1, vv2*12.])
+            for tl in self.sb.ties:
+                ax2.axvline(self.sb.tie(tl), 0.0, 0.03, lw=2, c='k')
+            plt.legend(loc=4)
+            plt.ylabel("Matched #2")
+            
+            ax3 = ax1.twiny()
+            ax3.plot(self.sb.ym,self.sb.xm,"-", c="orange")
+            ax3.plot(self.sa.y,self.sa.x,"--", c="red")
+            vv1 = min(self.sb.y.min(), self.sa.ym.min())
+            vv2 = max(self.sb.y.max(), self.sa.ym.max())
+            ax3.set_xlim([vv1, vv2*12.])
+            for tl in self.sa.ties:
+                ax3.axhline(self.sa.tie(tl), 0.0, 0.03, lw=2, c='k')
+            plt.xlabel("Matched #1")
+    
+    def save_gmt(self, filename = None):
+        ff = open(filename, "w")
+        kks = [
+            "Total", "point",
+            "nomatch", "speed", "speedchange",
+            "tie", "gap", "tie nomatch"
+        ]
+        
+        pps = [
+            "begin1", "end1", "numintervals1", "begin2", "end2", "numintervals2",
+            "nomatch", "speedpenalty", "speedchange", "tiepenalty", "gappenalty"
+        ]
+        
+        for ik, k in enumerate(kks):
+            ff.write("#Score>%d %f 12 0 0 TM %s\n" % (ik, self.scores[k], k))
+        
+        for ik, k in enumerate(pps):
+            ff.write("#Penalty>%d %f 12 0 0 TM %s\n" % (ik, self.params[k], k))
+        ff.write("#Penalty>%d %s 12 0 0 TM %s\n" % (ik+1,self.params["targetspeed"], "targetspeed"))
+        
+        ff.write("> %f %f %f\n" % (self.rms, self.correlation, self.scores['Total']))
+        
+        for xx, yy in zip(self.x1, self.x2):
+            ff.write("%f %f\n" % (xx, yy))
+        ff.close()
 
 class MatchConfFile(object):
+    '''
+    This class represents a MatchConfFile, i.e. the configuration file for match
+    if the given filename exists parameters are obtained from file, otherwise a 
+    new file is created but not saved. Use the save() call to save it.
+    
+    Use the interface supplied to set each of the match penalties. Use the run()
+    method to run match. Before that, give the series filename to the series1
+    and series2 variables. This will automatically attach the series to the
+    conf-file. Alternatively use the setSeries() method.
+
+    If you want to optimize a parameter, use the optimize() method supplying the
+    parameter name and array of values to be tested. The optimization method
+    should be one of ["RMS", "CORRELATION", "TOTAL_SCORE"] and supplied while
+    instantiating the class.
+
+    run() and runcopy() returns a MatchLog object, optimize() returns a list of
+    MatchLog.
+    '''
     ##
     # Location of the MATCH executable code
     ##
@@ -629,10 +720,13 @@ class MatchConfFile(object):
     def series1(self, value):
         if value == None:
                 self._series1 = None
+                self.begin1   = None
+                self.end1     = None
+                self.numintervals1 = None
                 return
         if not os.path.isfile(value):
             raise Exception("File '%s' not found." % value)
-        self._series1 = str(value)
+        self.setSeries(1, value, None, None, None)
         self._issaved = False
 
     @begin1.setter
@@ -647,17 +741,21 @@ class MatchConfFile(object):
     
     @numintervals1.setter
     def numintervals1(self, value):
-        self._numintervals1 = self.__maxsubdiv(1, value) if value != None else None
+        #self._numintervals1 = self.__maxsubdiv(1, value) if value != None else None
+        self._numintervals1 = value
         self._issaved = False
     
     @series2.setter
     def series2(self, value):
         if value == None:
                 self._series2 = None
+                self.begin2   = None
+                self.end2     = None
+                self.numintervals2 = None
                 return
         if not os.path.isfile(value):
             raise Exception("File '%s' not found." % value)
-        self._series2 = str(value)
+        self.setSeries(2, value, None, None, None)
         self._issaved = False
     
     @begin2.setter
@@ -672,7 +770,8 @@ class MatchConfFile(object):
     
     @numintervals2.setter
     def numintervals2(self, value):
-        self._numintervals2 = self.__maxsubdiv(2, value) if value != None else None
+        #self._numintervals2 = self.__maxsubdiv(2, value) if value != None else None
+        self._numintervals2 = value
         self._issaved = False
     
     @nomatch.setter
@@ -967,14 +1066,14 @@ class MatchConfFile(object):
             raise Exception("Not a file ! ")
         
         if which == 1:
-            self.series1 = filename
             serie = Serie(filename)
+            self._series1 = filename
             self.begin1 = float(begin) if begin != None else serie.x.min() 
             self.end1   = float(end) if end != None else serie.x.max()
             self.numintervals1 = int(nintervals) if nintervals != None else len(serie.x) // 7
         elif which == 2:
-            self.series2 = filename
             serie = Serie(filename)
+            self._series2 = filename
             self.begin2 = float(begin) if begin != None else serie.x.min()
             self.end2   = float(end) if end != None else serie.x.max()
             self.numintervals2 = int(nintervals) if nintervals != None else len(serie.x) // 7
@@ -1077,6 +1176,16 @@ class MatchConfFile(object):
         if plotresults: ml.plot()
         
         return ml 
+    
+    def runcopy(self):
+        original_filename = self.filename
+        self.saveas("lala.conf")
+        results = self.run(plotresults = False)
+        self.clean()
+        os.unlink("lala.conf")
+        self.__set_filename(original_filename)
+        self.save()
+        return results
     
     def optimize(self, parameter, values, update = True, plot = True):
         if not hasattr(self, parameter):
@@ -1207,6 +1316,17 @@ class MatchConfFile(object):
             print ""
 
 class Optimizer(object):
+    '''
+    This class is able to run perform a full optimization of the penalties.
+    While it performs the optimization it also stores all the logfiles as 
+    matchlog objects that are used in the end to obtain an age model weigthed
+    by the Correlation.
+    
+    Tests can be run in a given order, or in an automated order depende on what
+    method is used: run() or run_ordered().
+    
+    An exhaustive test can be made using runallcomb().
+    ''' 
     def __init__(self, mcf):
         self._mcf = mcf
         self.mls = None
@@ -1284,13 +1404,21 @@ class Optimizer(object):
         print "Nintervals2 from ",v2[0]," to ",v2[-1]," is: ",getattr(self._mcf, "numintervals2")
     
     def __run(self, param, values):
-        self.mls.extend(self._mcf.optimize(param, values, True, False))
+        oldv = getattr(self._mcf, param)
+        try:
+            self.mls.extend(self._mcf.optimize(param, values, True, False))
+        except:
+            setattr(self._mcf, param, oldv)
+            self._mcf.save()
+            print "Failed to optimize %s with %s" % (param, values)
+        
         print param," from ",values[0]," to ",values[-1]," is: ",getattr(self._mcf, param)
     
     ''' Utility methods
     '''
     def plot_results(self):
-        xs, mys, eys = self.median_estimate()
+        xs, mys, eys, rxs, _, reys, = self.median_estimate()
+        _ = np.interp(xs, rxs, reys)
         
         l = self._mcf.run(False, False)
         
@@ -1308,6 +1436,7 @@ class Optimizer(object):
         ##
         _ = plt.plot(xs, mys, lw=2, c='k', zorder=10)
         _ = plt.errorbar(xs, mys, yerr = eys, lw=2, capsize=3, color='k', zorder=10)
+        ## _ = plt.errorbar(xs, mys, xerr = rreys, lw=2, capsize=3, color='k', zorder=10)
         
         plt.figure(figsize=(18,10))
         l.sa.plotcomp(l.sb)
@@ -1320,24 +1449,39 @@ class Optimizer(object):
         mys = None
         eys = None
         
+        rxs = None
+        rmys = None
+        reys = None
+        
         if self.mls:
             xmin = min(self.mls[0].x1)
             xmax = max(self.mls[0].x1)
             xlen = len(self.mls[0].x1)
+            rxmin = min(self.mls[0].x2)
+            rxmax = max(self.mls[0].x2)
+            rxlen = len(self.mls[0].x2)
             for x in self.mls:
                 xlen = max(xlen, len(x.x1))
                 xmin = min(xmin, min(x.x1))
                 xmax = max(xmax, max(x.x1))
+
+                rxlen = max(rxlen, len(x.x2))
+                rxmin = min(rxmin, min(x.x2))
+                rxmax = max(rxmax, max(x.x2))
             
             # We Use 2xLength of curves given by Lisiecks
             xs = np.linspace(xmin, xmax, 2*xlen)
             ys  = []
             wys = []
             
+            rxs = np.linspace(rxmin, rxmax, 2*rxlen)
+            rys  = []
+            
             # print "Average",len(self.mls),"objects"
             for x in self.mls:
                 if limit is not None and (1-x.correlation) > limit: continue
                 ys.append(np.interp(xs, x.x1, x.x2, left = np.nan, right = np.nan))
+                rys.append(np.interp(rxs, x.x2, x.x1, left = np.nan, right = np.nan))
                 wys.append(1.0/(1.0-x.correlation))
             
             if len(ys) == 0:
@@ -1348,6 +1492,10 @@ class Optimizer(object):
             #
             ys = np.array(ys)
             ys = np.ma.array(ys, mask=np.isnan(ys))
+            
+            rys = np.array(rys)
+            rys = np.ma.array(rys, mask=np.isnan(rys))
+            
             
             ##
             # Process weights
@@ -1361,7 +1509,11 @@ class Optimizer(object):
             variance = np.ma.average((ys-mys)**2, weights=wys, axis=0)
             eys = np.sqrt(variance)
         
-        return (xs, mys, eys)
+            rmys = np.ma.average(rys, axis=0, weights = wys)
+            variance = np.ma.average((rys-rmys)**2, weights=wys, axis=0)
+            reys = np.sqrt(variance)
+        
+        return (xs, mys, eys, rxs, rmys, reys)
     
     def run_ordered(self, plot = True):
         if self.mls is None: self.mls = list()
@@ -1410,10 +1562,37 @@ class Optimizer(object):
         
         self.tests = {}
         return
-        return
+    
+    def runallcomb(self):
+        self.mls = list()
+        
+        def _G(k):
+            try:
+                return self.tests[k]
+            except KeyError:
+                return [ getattr(self._mcf, k) ]
+            return []
+        
+        for targetspeed in _G("targetspeed"):
+            self._mcf.targetspeed = targetspeed
+            for nomatch in _G("nomatch"):
+                self._mcf.nomatch = nomatch
+                for speedchange in _G("speedchange"):
+                    self._mcf.speedchange = speedchange
+                    for speedpenalty in _G("speedpenalty"):
+                        self._mcf.speedpenalty = speedpenalty
+                        for tiepenalty in _G("tiepenalty"):
+                            self._mcf.tiepenalty = tiepenalty
+                            self._mcf.save()
+                            if "nintervals" in self.tests:
+                                self.__run_nintervals(self.tests['nintervals'])
+                            else:
+                                self.mls.append(self._mcf.runcopy())
+        
+        return 
     
     def estimate(self, cm = None, t = None):
-        xcm, xt, et = self.median_estimate()
+        xcm, xt, et, _, _, _ = self.median_estimate()
         
         if cm is None and t is not None:
             cm = np.interp(t, xt, xcm, left = np.nan, right = np.nan)
@@ -1433,7 +1612,7 @@ class Optimizer(object):
             need_close = True
             filename_or_file = open(filename_or_file, "w")
         
-        xs, ys, eys = self.median_estimate()
+        xs, ys, eys, _, _, _ = self.median_estimate()
         for x, y, e in zip(xs,ys,eys):
             print >>filename_or_file, "%f%s%f%s%f" % (x,sep,y,sep,e)
         
@@ -1483,3 +1662,21 @@ class Optimizer(object):
         
         return
     
+    def save_gmt(self, folder = "GMT"):
+        if not os.path.isdir(folder):
+            os.mkdir(folder)
+        i = 0
+        for ml in self.mls:
+            ml.save_gmt(os.path.join(folder, "op_%08d.dat" % i))
+            i += 1
+
+        l = self._mcf.run(False, False)
+        l.save_gmt(os.path.join(folder, "best.dat"))
+        
+        xcm, xt, et, _, _, _ = self.median_estimate()
+        ff = open(os.path.join(folder, "median.dat"), "w")
+        ff.write("> Median Age Model\n")
+        for x,t,e in zip(xcm,xt,et):
+            ff.write("%f %f %f\n" % (x,t,e))
+        ff.close()
+
