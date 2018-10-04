@@ -21,6 +21,34 @@ import os, sys
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib import gridspec
+import matplotlib as mpl
+
+class Helpers(object):
+    def __init__(self):
+        raise Exception("This is just a helper class")
+
+    @staticmethod
+    def applyTie(tie_obj, serie_obj, column = 1):
+        if column not in [1,2]:
+            print "Column should be 1 or 2"
+            return
+        
+        if not isinstance(serie_obj, Serie):
+            print "Expect a serie object on serie_obj !"
+            return
+        
+        if not isinstance(tie_obj, Tie):
+            print "Expect a tie object on tie_obj !"
+            return
+        
+        i = 0
+        for t in tie_obj.tie_labels:
+            serie_obj.setTie(t, tie_obj.tie(t)[column-1])
+            i+=1
+        
+        print "Applied %d ties to %s" % (i, serie_obj.label)
+        return i
+
 
 class Tie(object):
     ''' Represents a tie file as loaded by match. Can be created from a file,
@@ -38,10 +66,19 @@ class Tie(object):
         if self.filename != None and os.path.isfile(self.filename):
             with open(self.filename) as fio:
                 for line in fio:
-                    v1, v2 = line.strip().split()
+                    line = line.strip()
+                    if len(line) == 0: continue
+                    try:
+                        v1, v2 = line.split()
+                        s1 = 0
+                        s2 = 0
+                    except:
+                        s1, v1, s2, v2 = line.split()
+                        s1 = float(s1)
+                        s2 = float(s2)
                     v1 = float(v1)
                     v2 = float(v2)
-                    self.set_tie(v1, v2)
+                    self.set_tie(v1, v2, s1, s2)
     
     @property
     def filename(self):
@@ -125,7 +162,10 @@ class Serie(object):
         self.label = 'Noname' if label is None else label
         self._ties  = { }
         
-        self.x, self.y, self.s = Serie.read(self.filename)
+        try:
+            self.x, self.y, self.s = Serie.read(self.filename)
+        except:
+            pass
         
         try:
             filename = self.filename + ".new"
@@ -133,6 +173,34 @@ class Serie(object):
             self.ismatched = True
         except:
             pass
+    
+    def set_data(self, x1, x2, s = None):
+        if len(x1) != len(x2): raise Exception("Cannot load data with different size")
+        if s is not None and len(s) != len(x1): raise Exception("Cannot load data amd segment size with different size")
+        
+        self.x = x1
+        self.y = x2
+        self.s = s
+        
+        return
+
+    def setGap(self, xmin, xmax):
+        if xmin >= xmax:
+            raise Exception("xmin should be smaller than xmax")
+        
+        if len(self.x[ (self.x > xmin) & (self.x < xmax) ]) > 0:
+            raise Exception("There is data in gap region !")
+        
+        if self.s is None: self.s = np.ones(self.x.shape) * 1000.
+        
+        self.s[ self.x <= xmin ] -= 1
+        self.s[ self.x >= xmax ] += 1
+        
+        #for ga,gb in self._gaps:
+        #    if xmin > gb: continue
+        #    if xmax < ga: continue
+        #    raise Exception("xmin and xmax overlaps gap existent: %f/%5f" % (ga,gb))
+        #self._gaps.append((xmin, xmax))
     
     @staticmethod
     def read(filename):
@@ -145,6 +213,7 @@ class Serie(object):
             s = None
         else:
             s,x,y = data
+            s += 1000.0
         return x,y,s
     
     def setLimits(self, begin = None, end = None, cut = False):
@@ -229,6 +298,13 @@ class Serie(object):
         Save this data serie
         '''
         
+        if self.s is not None:
+            _,i = np.unique(self.s, True)
+            ss = self.s[sorted(i)]
+            dd = np.arange(len(ss))+1
+            for f,t in zip(ss, dd):
+                self.s[ self.s == f ] = t
+        
         if self.s is None:
             data = np.array(zip(self.x, self.y))
         else:
@@ -293,30 +369,52 @@ class Serie(object):
         if not self.ismatched or not other.ismatched:
             raise Exception("Both series needs to be Matched !")
         
-        plt.subplot(2,1,1)
-        plt.plot(self.x, self.y, label=self.filename)
+        ax = plt.subplot(2,1,1)
+        for sid in self._gapids():
+            x, y = self._segment(sid)
+            ax.plot(x, y, "-o", label="%s sID: %d" % (self.filename, sid))
         for t in self.ties:
-            plt.axvline(self.tie(t), 0.1, 0.15, color='k')
-        plt.plot(other.xm, other.ym, label=other.filename)
-        plt.axvspan(self.begin, self.end, 0.1, 0.2, alpha=0.3, color='80', label='Used part from %s' % self.filename)
-        plt.legend()
+            ax.axvline(self.tie(t), 0.1, 0.15, color='k')
+        ax.plot(other.xm, other.ym, label="Matched %s" % other.filename)
+        ax.axvspan(self.begin, self.end, 0.1, 0.2, alpha=0.3, color='80', label='Used part from %s' % self.filename)
+        ax.legend(bbox_to_anchor = (1.0, 1.45), ncol = 3)
         
         plt.subplot(2,1,2)
-        plt.plot(self.xm, self.ym, label=self.filename)
+        plt.plot(self.xm, self.ym, label="Matched: %s" % self.filename)
         for t in other.ties:
             plt.axvline(other.tie(t),0.1, 0.15, color='k')
-        plt.plot(other.x, other.y, label=other.filename)
+        plt.plot(other.x, other.y, "-o", label=other.filename)
         plt.axvspan(other.begin, other.end, 0.1, 0.2, alpha=0.3, color='80', label='Used part from %s' % other.filename)
-        plt.legend()
+        plt.legend(bbox_to_anchor = (1.0, -0.15), ncol = 3)
     
-    def plot(self):
+    def _gapids(self):
+        return self.s[sorted(np.unique(self.s, True)[1])] if self.s is not None else [0]
+    
+    def _segment(self, sid):
+        if sid == 0:
+            return self.x, self.y
+        return self.x[self.s == sid], self.y[self.s == sid]
+    
+    def plot(self, symbols = False):
         '''
         Plot this data serie and its parameters
         '''
         m1 = self.x.min() if self.begin is None else self.begin
         m2 = self.x.max() if self.end is None else self.end
-        plt.axvspan(m1, m2, 0.05, 0.15, alpha=0.75, color="0.6", label='Used Segment')
-        plt.plot(self.x, self.y, label='Series %s [%s]' % (self.label if self.label else '-',self.filename))
+        
+        # Data Span
+        plt.axvspan(m1, m2, 0.05, 0.10, alpha=0.75, color="0.6", label='Used Segment')
+        
+        # Segments
+        c = 'm'
+        for sid in self._gapids():
+            x, y = self._segment(sid)
+            if sid != 0:
+                plt.axvspan(x.min(), x.max(), 0.11, 0.15, alpha = 0.75, color=c)
+                c = 'm' if c == 'y' else 'y'
+            plt.plot(x, y, label = 'Series %s [%s] sID %s' % (self.label if self.label else '-', self.filename, sid))
+            if symbols:
+                plt.plot(x, y, 'o')
         
         for v in self.ties.values():
             plt.axvline(v, 0.05, 0.2, color ='k')
@@ -331,13 +429,15 @@ class Serie(object):
             print "Serie: Label: %s Filename: %s" %(self.label, self.filename)
             print "\nStatistics:        %8s / %-8s"  % ("Full", "Window")
             print " Number of Points: %8d / %-8d" % (len(self.x), len(self.x_window))
-            print "            x-Min: %8f / %-8f" % (self.x.min(), self.x_window.max())
-            print "            y-Min: %8f / %-8f" % (self.y.min(), self.y_window.min())
-            print "            y-Max: %8f / %-8f" % (self.y.max(), self.y_window.max())
-            print "           y-Mean: %8f / %-8f" % (self.y.mean(), self.y_window.mean())
-            print "          y-StdEv: %8f / %-8f" % (self.y.std(), self.y_window.std())
+            print "            x-Min: %8.4f / %-8.4f" % (self.x.min(), self.x_window.max())
+            print "            y-Min: %8.4f / %-8.4f" % (self.y.min(), self.y_window.min())
+            print "            y-Max: %8.4f / %-8.4f" % (self.y.max(), self.y_window.max())
+            print "           y-Mean: %8.4f / %-8.4f" % (self.y.mean(), self.y_window.mean())
+            print "          y-StdEv: %8.4f / %-8.4f" % (self.y.std(), self.y_window.std())
+            print "x-spac. (min/max): %8.4f / %-8.4f" % (np.min(self.x[1:] - self.x[:-1]), np.max(self.x[1:] - self.x[:-1]))
             print "\nAssociated Information:"
             print "   Begin is: %s and End is: %s" % (self.begin, self.end)
+            print "   Total # of series/gaps: %s" % str(len(set(self.s))) if self.s is not None else "-"
             print "   Total of %d tie points." % (len(self.ties))
             i = 0
             for k,x in self.ties.iteritems():
@@ -485,8 +585,9 @@ class MatchLog(object):
         
         if self.sb != None:
             ax2 = ax1.twinx()
-            
-            ax2.plot(self.sb.x, self.sb.y,'--.', c="orange", label="%s" % self.sb.label)
+            for sid in self.sb._gapids():
+                x, y = self.sb._segment(sid)
+                ax2.plot(x, y,'--.', c="orange", label="%s" % self.sb.label)
             ax2.plot(self.sa.xm, self.sa.ym,'-', c="red", label=self.sa.label)
             vv1 = min(self.sb.ym.min(), self.sa.y.min())
             vv2 = max(self.sb.ym.max(), self.sa.y.max())
@@ -498,7 +599,9 @@ class MatchLog(object):
             
             ax3 = ax1.twiny()
             ax3.plot(self.sb.ym,self.sb.xm,"-", c="orange")
-            ax3.plot(self.sa.y,self.sa.x,"--", c="red")
+            for sid in self.sa._gapids():
+                x, y = self.sa._segment(sid)
+                ax3.plot(y,x,"--", c="red")
             vv1 = min(self.sb.y.min(), self.sa.ym.min())
             vv2 = max(self.sb.y.max(), self.sa.ym.max())
             ax3.set_xlim([vv1, vv2*12.])
@@ -1417,30 +1520,50 @@ class Optimizer(object):
     ''' Utility methods
     '''
     def plot_results(self):
-        xs, mys, eys, rxs, _, reys, = self.median_estimate()
-        _ = np.interp(xs, rxs, reys)
+        mls = []
+        for i,ml in enumerate(self.mls):
+            c = 1.0 - ml.correlation
+            if c > 1: continue
+            mls.append((i,c))
+        mls = sorted(mls, key=lambda tup: tup[1], reverse=True)
         
-        l = self._mcf.run(False, False)
+        # Start Plot
+        fig, (ax1, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[1, 3]}, sharex=True, figsize=(6,7.5))
         
-        plt.figure(figsize=(20,10))
+        sa = self._mcf.getSeries(1)
+        sb = self._mcf.getSeries(2)
         
-        # All Fits
-        ##
-        _  = map(lambda x: plt.plot(x.x1, x.x2), self.mls)
+        xta, xa, vxa = self.estimate(cm=sa.x)
+        sa.x = xta
         
-        # Best fit
-        ##
-        _ = plt.plot(l.x1, l.x2, '--', lw=22, c="w", zorder=5, alpha=0.7)
+        ax1.plot(sb.x, sb.y,'-', c='red')
+        for s in sa._gapids():
+            x, y = sa._segment(s)
+            ax1.plot(x, y, "-k")
+        ax1.yaxis.set_label_text("$\delta O^{18}$")
         
-        # Average Line
-        ##
-        _ = plt.plot(xs, mys, lw=2, c='k', zorder=10)
-        _ = plt.errorbar(xs, mys, yerr = eys, lw=2, capsize=3, color='k', zorder=10)
-        ## _ = plt.errorbar(xs, mys, xerr = rreys, lw=2, capsize=3, color='k', zorder=10)
+        xs, mys, eys, rxs, rmys, reys = self.median_estimate()
+        ax2.plot(rxs, rmys, lw=2, c='red', zorder=11)
+        ax2.errorbar(rxs[::3], rmys[::3], reys[::3], c='red', elinewidth=2, lw=0, zorder=10)
         
-        plt.figure(figsize=(18,10))
-        l.sa.plotcomp(l.sb)
-        ## _  = plt.legend(loc='upper left', ncol=2, shadow=False, bbox_to_anchor=(1.01, 1.0))
+        cmap = plt.cm.magma
+        norm = mpl.colors.Normalize(0.0, 0.05)
+        c = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+        for iml in mls:
+            ml = self.mls[iml[0]]
+            ax2.plot(ml.x2, ml.x1, c = c.to_rgba(iml[1]), zorder = 1)
+        ax2.yaxis.set_label_text("Depth (km)")
+        ax2.xaxis.set_label_text("Time (ka)")
+        
+        ttt = Tie(self._mcf.tiefile)
+        for label in ttt.tie_labels:
+            tie = ttt.tie(label)
+            ax2.axvline(tie[1],0.02,0.05, ls='--')
+            ax2.axhline(tie[0],0.02, 0.05, ls='--')
+        
+        ax3 = ax2.figure.add_axes([1.0, 0.1, 0.02, 0.3])
+        mpl.colorbar.ColorbarBase(ax3, cmap=cmap, norm=norm, label='1-$\phi$')
+        plt.tight_layout()
         
         return
     
