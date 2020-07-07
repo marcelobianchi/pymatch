@@ -17,7 +17,9 @@
 #     along with PyMatchInterface.  If not, see <http://www.gnu.org/licenses/>.#
 ################################################################################
 
-import os, sys
+from __future__ import print_function, division
+
+import os, sys, subprocess, psutil
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib import gridspec
@@ -38,10 +40,13 @@ class Tie(object):
         if self.filename != None and os.path.isfile(self.filename):
             with open(self.filename) as fio:
                 for line in fio:
-                    v1, v2 = line.strip().split()
-                    v1 = float(v1)
-                    v2 = float(v2)
-                    self.set_tie(v1, v2)
+                    try:
+                        s1, v1, s2, v2 = line.strip().split()
+                    except ValueError:
+                        v1, v2 = line.strip().split()
+                        s1 = None
+                        s2 = None
+                    self.set_tie(v1, v2, s1, s2)
     
     @property
     def filename(self):
@@ -56,7 +61,7 @@ class Tie(object):
         if self.__label == None:
             self.__label = "A"
         else:
-            indices = map(lambda x: ord(x), self.__label)
+            indices = list(map(lambda x: ord(x), self.__label))
             updated = False
             for i in range(1,len(indices)+1):
                 if indices[-i] == 90:
@@ -71,10 +76,13 @@ class Tie(object):
     
     ''' Utilities methods
     '''
-    def set_tie(self, value_one, value_two, segment_one = 0, segment_two = 0, label = None):
-        label = label if label != None else self.nextlabel
+    def set_tie(self, value_one, value_two, segment_one = None, segment_two = None, label = None):
+        label = label if label is not None else self.nextlabel
+        if segment_one is not None: segment_one = int(segment_one)
+        if segment_two is not None: segment_two = int(segment_two)
+        
         self.__tiepoints[label] = (float(value_one), float(value_two),
-                                   int(segment_one), int(segment_two))
+                                   segment_one, segment_two)
     
     def tie(self, label):
         return self.__tiepoints[label]
@@ -88,18 +96,21 @@ class Tie(object):
             raise Exception("Bad filename for saving tie - give me a name first!")
         fio = open(self.filename, "w")
         for label in self.tie_labels:
-            v1, v2, _, _ = self.tie(label)
-            print >>fio, v1, v2
+            v1, v2, s1, s2 = self.tie(label)
+            if s1 is None and s2 is None:
+                print(v1, v2, file = fio)
+            else:
+                print(s1, v1, s2, v2, file = fio)
         fio.close()
         
         return True    
     
     def report(self):
         n = len(self.tie_labels)
-        print 'Total of %d labels are defined.' % n
+        print('Total of %d labels are defined.' % n)
         for label in sorted(self.tie_labels):
             v1, v2, s1, s2 = self.tie(label)
-            print "  %s => %d,%f = %d,%f" % (label, s1,v1,s2,v2)
+            print("  %s => %s,%f = %s,%f" % (label, s1 if s1 is not None else "-",v1, s2 if s2 is not None else "-",v2))
 
 class Serie(object):
     '''
@@ -230,9 +241,9 @@ class Serie(object):
         '''
         
         if self.s is None:
-            data = np.array(zip(self.x, self.y))
+            data = np.array(list(zip(self.x, self.y)))
         else:
-            data = np.array(zip(self.s, self.x, self.y))
+            data = np.array(list(zip(self.s, self.x, self.y)))
         
         np.savetxt(self.filename, data)
         
@@ -240,7 +251,7 @@ class Serie(object):
     
     def saveas(self, filename):
         if os.path.isfile(filename):
-            print "Will overwrite filename '%s'." % filename
+            print("Will overwrite filename '%s'." % filename)
         self.__filename = filename
         return self.save()
     
@@ -325,25 +336,25 @@ class Serie(object):
     
     def report(self, simple = False):
         if simple:
-            print "%13s" % "Series:", self.filename
-            print "%13s" % "","begin:", self.begin, "end:", self.end, "num. Intervals:", self.numintervals," len:",len(self.x)
+            print("%13s" % "Series:", self.filename)
+            print("%13s" % "","begin:", self.begin, "end:", self.end, "num. Intervals:", self.numintervals," len:",len(self.x))
         else:
-            print "Serie: Label: %s Filename: %s" %(self.label, self.filename)
-            print "\nStatistics:        %8s / %-8s"  % ("Full", "Window")
-            print " Number of Points: %8d / %-8d" % (len(self.x), len(self.x_window))
-            print "            x-Min: %8f / %-8f" % (self.x.min(), self.x_window.max())
-            print "            y-Min: %8f / %-8f" % (self.y.min(), self.y_window.min())
-            print "            y-Max: %8f / %-8f" % (self.y.max(), self.y_window.max())
-            print "           y-Mean: %8f / %-8f" % (self.y.mean(), self.y_window.mean())
-            print "          y-StdEv: %8f / %-8f" % (self.y.std(), self.y_window.std())
-            print "\nAssociated Information:"
-            print "   Begin is: %s and End is: %s" % (self.begin, self.end)
-            print "   Total of %d tie points." % (len(self.ties))
+            print("Serie: Label: %s Filename: %s" %(self.label, self.filename))
+            print("\nStatistics:        %8s / %-8s"  % ("Full", "Window"))
+            print(" Number of Points: %8d / %-8d" % (len(self.x), len(self.x_window)))
+            print("            x-Min: %8f / %-8f" % (self.x.min(), self.x_window.max()))
+            print("            y-Min: %8f / %-8f" % (self.y.min(), self.y_window.min()))
+            print("            y-Max: %8f / %-8f" % (self.y.max(), self.y_window.max()))
+            print("           y-Mean: %8f / %-8f" % (self.y.mean(), self.y_window.mean()))
+            print("          y-StdEv: %8f / %-8f" % (self.y.std(), self.y_window.std()))
+            print("\nAssociated Information:")
+            print("   Begin is: %s and End is: %s" % (self.begin, self.end))
+            print("   Total of %d tie points." % (len(self.ties)))
             i = 0
-            for k,x in self.ties.iteritems():
-                print "      Tie #%d, Label: %s Position: %s" % (i, k, x)
+            for k,x in self.ties.items():
+                print("      Tie #%d, Label: %s Position: %s" % (i, k, x))
                 i += 1
-            print ""
+            print("")
 
 class MatchLog(object):
     '''
@@ -389,6 +400,7 @@ class MatchLog(object):
     def _parse_match(self):
         if not os.path.isfile(self.matchfile):
             raise Exception("No Match file found.")
+        # BUggy - we are ignoring the cores again!
         _, x1, _, x2 = np.loadtxt(self.matchfile, unpack = True)
         self.x1 = x1
         self.x2 = x2
@@ -397,10 +409,15 @@ class MatchLog(object):
         if not os.path.isfile(self.logfile):
             raise Exception("No Match file found.")
         
+        success = False
+        
         with open(self.logfile) as results:
             go = False
             for line in results:
                 line = line.strip()
+                
+                if line == "Execution successful.": success = True
+                
                 if line == "---Penalties---":
                     go = True
                     continue
@@ -415,6 +432,10 @@ class MatchLog(object):
                 except:
                     continue
                 self.scores[k] = float(v)
+        
+        if success is False: raise Exception("Match Failed to Run - No Success @ end")
+        if not go: raise Exception("Match Failed to Run - No Penalties")
+        
     
     @property
     def correlation(self):
@@ -463,8 +484,8 @@ class MatchLog(object):
 
         # Bar Plot
         ##
-        values = map(lambda x: self.scores[x], labels[:-2])
-        positions = range(len(labels))
+        values = list(map(lambda x: self.scores[x], labels[:-2]))
+        positions = list(range(len(labels)))
         values.append(self.rms)
         values.append(self.correlation)
         
@@ -554,7 +575,8 @@ class MatchConfFile(object):
     ##
     # Location of the MATCH executable code
     ##
-    _MATCHCMD = "./match" 
+    
+    _MATCHCMD = "./match" if not psutil.WINDOWS else "match.exe"
     
     def __init__(self, filename, autonormalize = False, optmization_method = "Total_Score"):
         self._series1 = None
@@ -701,7 +723,7 @@ class MatchConfFile(object):
         value = int(value)
         sa = self.getSeries(which)
         if len(sa.x) / value <= 0:
-            print "Adjusting maximum sub-division so that there is at least 2 samples per segment"
+            print("Adjusting maximum sub-division so that there is at least 2 samples per segment")
             value = len(sa.x) // 2
         return value
     
@@ -844,7 +866,7 @@ class MatchConfFile(object):
     
     @tiefile.setter
     def tiefile(self, value):
-        if value == None:
+        if value is None:
             self._tiefile = None
         else:
             if not os.path.isfile(value):
@@ -855,10 +877,12 @@ class MatchConfFile(object):
             ##
             tt = Tie(value)
             sa = self.getSeries(1)
-            map(lambda label: sa.setTie(label, tt.tie(label)[0]), tt.tie_labels)
-            
             sb = self.getSeries(2)
-            map(lambda label: sb.setTie(label, tt.tie(label)[1]), tt.tie_labels)
+            for label in tt.tie_labels:
+                ### BUGGY - We should check that the core s1,s2 is valid for serie
+                v1, v2, s1, s2 = tt.tie(label)
+                sa.setTie(label, v1)
+                sb.setTie(label, v2)
             
             ##
             # Ok
@@ -912,7 +936,7 @@ class MatchConfFile(object):
                 
                 if k not in validkeys:
                     if k != None and k != "":
-                        print "Invalid key in config file ignored: '%s'  !" % k
+                        print("Invalid key in config file ignored: '%s'  !" % k)
                     continue
                 
                 if k == "targetspeed":
@@ -925,19 +949,19 @@ class MatchConfFile(object):
                     setattr(self, k, v)
         
         if self.matchfile in ["", None] or self.logfile in ["", None]:
-            print "No match & log file indicated, generating default values."
+            print("No match & log file indicated, generating default values.")
             self.__set_filename(filename)
         
         try:
             self.targetspeed = targetspeed
-        except Exception,e:
-            print "Error -- ",e.message
+        except Exception as e:
+            print("Error -- ",e.message)
     
     def __write(self, fio, variable):
         v = getattr(self, variable)
         if v == None: return
         if variable == "speeds": v = ",".join(v)
-        print >>fio,"%-13s" % variable, "%s" % v
+        print("%-13s" % variable, "%s" % v, file = fio)
     
     def saveas(self, filename):
         '''
@@ -960,28 +984,28 @@ class MatchConfFile(object):
         s1 = Serie(self.series1)
         if self.begin1 == None:
             self.begin1 = s1.x.min()
-            print "Setting series1 begin to %s" % self.begin1
+            print("Setting series1 begin to %s" % self.begin1)
         
         if self.end1 == None:
             self.end1 = s1.x.max()
-            print "Setting series1 end to %s" % self.end1
+            print("Setting series1 end to %s" % self.end1)
         
         if self.numintervals1 == None:
             self.numintervals1 = len(s1.x) // 7
-            print "Setting series1 numintervals to %s" % self.numintervals1
+            print("Setting series1 numintervals to %s" % self.numintervals1)
         
         s2 = Serie(self.series2)
         if self.begin2 == None:
             self.begin2 = s2.x.min()
-            print "Setting series2 begin to %s" % self.begin2
+            print("Setting series2 begin to %s" % self.begin2)
         
         if self.end2 == None:
             self.end2 = s2.x.max()
-            print "Setting series2 end to %s" % self.end2
+            print("Setting series2 end to %s" % self.end2)
         
         if self.numintervals2 == None:
             self.numintervals2 = len(s2.x) // 7
-            print "Setting series2 numintervals to %s" % self.numintervals2
+            print("Setting series2 numintervals to %s" % self.numintervals2)
         
         fio = open(self.filename, "w")
         
@@ -1028,10 +1052,10 @@ class MatchConfFile(object):
     '''
     def generateSpeeds(self, first, last, exchanged = True):
         if not isinstance(first, list):
-            first = range(1,first+1)
+            first = list(range(1,first+1))
         
         if not isinstance(last, list):
-            last = range(1,last+1)
+            last = list(range(1,last+1))
         
         if len(first) == 0 or len(last) == 0:
             raise Exception("Not enough values for pair")
@@ -1090,7 +1114,7 @@ class MatchConfFile(object):
         sb = self.getSeries(2)
         
         if self._autonormalize:
-            print "Normalizing series (1) from %.1f to %.1f and series (2) from %.1f to %.1f" % (self.begin1, self.end1, self.begin2, self.end2)
+            print("Normalizing series (1) from %.1f to %.1f and series (2) from %.1f to %.1f" % (self.begin1, self.end1, self.begin2, self.end2))
             sb.normalizeStd(True).save()
             sb.normalizeStd(True).save()
         
@@ -1131,7 +1155,7 @@ class MatchConfFile(object):
             s.setLimits(self.begin1, self.end1, cut = False)
             s.numintervals = self.numintervals1
             if t:
-                map(lambda label: s.setTie(label, t.tie(label)[0]), t.tie_labels)
+                list(map(lambda label: s.setTie(label, t.tie(label)[0]), t.tie_labels))
             return s
         elif which == 2:
             if self.series2 == None: raise Exception("Serie is Unset.")
@@ -1139,7 +1163,7 @@ class MatchConfFile(object):
             s.setLimits(self.begin2, self.end2, cut = False)
             s.numintervals = self.numintervals2
             if t:
-                map(lambda label: s.setTie(label, t.tie(label)[1]), t.tie_labels)
+                list(map(lambda label: s.setTie(label, t.tie(label)[1]), t.tie_labels))
             return s
         else:
             raise Exception("No such serie")
@@ -1149,7 +1173,7 @@ class MatchConfFile(object):
             raise Exception("Please save CONF file first !")
         
         if autosave:
-            print "Auto-saving file '%s'" % self.filename
+            print("Auto-saving file '%s'" % self.filename)
             self.save()
         
         if not os.path.isfile(self.filename):
@@ -1159,17 +1183,24 @@ class MatchConfFile(object):
             raise Exception("Program 'match' was not found in this system !")
         
         if self._autonormalize:
-            print "Normalizing series (1) from %.1f to %.1f and series (2) from %.1f to %.1f" % (self.begin1, self.end1, self.begin2, self.end2)
+            print("Normalizing series (1) from %.1f to %.1f and series (2) from %.1f to %.1f" % (self.begin1, self.end1, self.begin2, self.end2))
             self.getSeries(1).normalizeStd(True).save()
             self.getSeries(2).normalizeStd(True).save()
         
-        os.popen('%s -v %s 2>&1' % (MatchConfFile._MATCHCMD, self.filename))
+        err = subprocess.call([MatchConfFile._MATCHCMD, self.filename])
+        if err != 0:
+            print("Failed to RUN match -- look at the log file -- %s" % self.logfile)
+            return None
         
-        ml = MatchLog(self.matchfile,
-                      self.logfile,
-                      self.getSeries(1),
-                      self.getSeries(2)
-                      )
+        try:
+            ml = MatchLog(self.matchfile,
+                          self.logfile,
+                          self.getSeries(1),
+                          self.getSeries(2)
+                          )
+        except Exception as e:
+            print(str(e))
+            return None
         
         ml.params.update(self.__params())
         
@@ -1203,7 +1234,7 @@ class MatchConfFile(object):
         x   = []
         s   = []
         
-        if plot: print "Working on optimizing %s from %s - %s" % (parameter, values[0], values[-1]) 
+        if plot: print("Working on optimizing %s from %s - %s" % (parameter, values[0], values[-1]))
         best_value = None
         max_metric    = None
         original_filename = self.filename
@@ -1211,13 +1242,13 @@ class MatchConfFile(object):
         rounds = 0
         for iv, v in zip(range(len(values)), values):
             if plot:
-                if pcount in  [5,10,15, 20, 25, 30, 35, 40]: print " ",
+                if pcount in  [5,10,15, 20, 25, 30, 35, 40]: print(" ", end = "")
                 if pcount == 45:
                     rounds += 1
-                    if plot: print "%03s %%" % ((100*rounds*45)/len(values))
+                    if plot: print("%03s %%" % ((100*rounds*45)/len(values)))
                     pcount = 0
-                print ".",
-                if iv == len(values)-1: print "100 %"
+                print(".", end = "")
+                if iv == len(values)-1: print("100 %")
             pcount += 1
             
             setattr(self, parameter, v)
@@ -1244,7 +1275,7 @@ class MatchConfFile(object):
         
         self.__set_filename(original_filename)
         
-        if plot: print "Final parameter %s = %s"  % (parameter, best_value)
+        if plot: print("Final parameter %s = %s"  % (parameter, best_value))
         
         if update:
             setattr(self, parameter, best_value)
@@ -1252,13 +1283,13 @@ class MatchConfFile(object):
         
         if plot:
             _, ax1 = plt.subplots(figsize=(10,7))
-            values = map(lambda item: item.correlation, s)
+            values = list(map(lambda item: item.correlation, s))
             ax1.plot(x, values, "r-o", label='Correlation')
             formats, labels = ax1.get_legend_handles_labels()
             
             ax2 = ax1.twinx()
             for k in ["Total", "point", "nomatch", "speed", "speedchange", "tie", "gap", "tie nomatch"]:
-                values = map(lambda item: item.scores[k], s)
+                values = list(map(lambda item: item.scores[k], s))
                 ax2.plot(x, values, label = k)
             
             f, l = ax2.get_legend_handles_labels()
@@ -1282,38 +1313,38 @@ class MatchConfFile(object):
     def report(self):
         sa = self.getSeries(1)
         sb = self.getSeries(2)
-        print ""
-        print " ** Series **"
+        print("")
+        print(" ** Series **")
         sa.report(simple = True)
-        print ""
+        print("")
         sb.report(simple = True)
-        print ""
+        print("")
         
-        print " ** Penalties **"
-        print "%13s" % "nomatch:", self.nomatch
-        print "%13s" % "speedpenalty:", self.speedpenalty
-        print "%13s" % "targetspeed:", self.targetspeed
-        print "%13s" % "speedchange:", self.speedchange
-        print "%13s" % "tiepenalty:", self.tiepenalty
-        print "%13s" % "gappenalty:", self.gappenalty
-        print ""
+        print(" ** Penalties **")
+        print("%13s" % "nomatch:", self.nomatch)
+        print("%13s" % "speedpenalty:", self.speedpenalty)
+        print("%13s" % "targetspeed:", self.targetspeed)
+        print("%13s" % "speedchange:", self.speedchange)
+        print("%13s" % "tiepenalty:", self.tiepenalty)
+        print("%13s" % "gappenalty:", self.gappenalty)
+        print("")
         
-        print "%13s" % "speeds:", ",".join(self.speeds) if self.speeds else "-"
-        print ""
+        print("%13s" % "speeds:", ",".join(self.speeds) if self.speeds else "-")
+        print("")
         
-        print " ** Constrains & Files **"
-        print "%13s" % "series1gaps:", self.series2gaps
-        print "%13s" % "series2gaps:", self.series1gaps
-        print "%13s" % "tiefile:", self.tiefile
-        print "%13s" % "matchfile:", self.matchfile
-        print "%13s" % "logfile:", self.logfile
+        print(" ** Constrains & Files **")
+        print("%13s" % "series1gaps:", self.series2gaps)
+        print("%13s" % "series2gaps:", self.series1gaps)
+        print("%13s" % "tiefile:", self.tiefile)
+        print("%13s" % "matchfile:", self.matchfile)
+        print("%13s" % "logfile:", self.logfile)
         
         if self.tiefile != None and self.tiefile != "":
             tt = Tie(self.tiefile)
-            print ""
-            print " ** Tie is Defined **"
+            print("")
+            print(" ** Tie is Defined **")
             tt.report()
-            print ""
+            print("")
 
 class Optimizer(object):
     '''
@@ -1400,8 +1431,8 @@ class Optimizer(object):
         
             stop = stop and (before == after)
 
-        print "Nintervals1 from ",v1[0]," to ",v1[-1]," is: ",getattr(self._mcf, "numintervals1")
-        print "Nintervals2 from ",v2[0]," to ",v2[-1]," is: ",getattr(self._mcf, "numintervals2")
+        print("Nintervals1 from ",v1[0]," to ",v1[-1]," is: ",getattr(self._mcf, "numintervals1"))
+        print("Nintervals2 from ",v2[0]," to ",v2[-1]," is: ",getattr(self._mcf, "numintervals2"))
     
     def __run(self, param, values):
         oldv = getattr(self._mcf, param)
@@ -1410,9 +1441,9 @@ class Optimizer(object):
         except:
             setattr(self._mcf, param, oldv)
             self._mcf.save()
-            print "Failed to optimize %s with %s" % (param, values)
+            print("Failed to optimize %s with %s" % (param, values))
         
-        print param," from ",values[0]," to ",values[-1]," is: ",getattr(self._mcf, param)
+        print(param," from ",values[0]," to ",values[-1]," is: ",getattr(self._mcf, param))
     
     ''' Utility methods
     '''
@@ -1426,7 +1457,7 @@ class Optimizer(object):
         
         # All Fits
         ##
-        _  = map(lambda x: plt.plot(x.x1, x.x2), self.mls)
+        _  = list(map(lambda x: plt.plot(x.x1, x.x2), self.mls))
         
         # Best fit
         ##
@@ -1477,7 +1508,7 @@ class Optimizer(object):
             rxs = np.linspace(rxmin, rxmax, 2*rxlen)
             rys  = []
             
-            # print "Average",len(self.mls),"objects"
+            # print("Average",len(self.mls),"objects")
             for x in self.mls:
                 if limit is not None and (1-x.correlation) > limit: continue
                 ys.append(np.interp(xs, x.x1, x.x2, left = np.nan, right = np.nan))
@@ -1527,7 +1558,7 @@ class Optimizer(object):
         if not self.mls:
             self.orderactivated = []
             self.orderedparams  = []
-            print " -- No tests was performed. -- "
+            print(" -- No tests was performed. -- ")
             return
         
         if plot:
@@ -1543,7 +1574,7 @@ class Optimizer(object):
         
         for k in ["nintervals", "targetspeed", "nomatch", "speedchange", "speedpenalty", "gappenalty", "tiepenalty"]:
             if k not in self.tests:
-                print "Skipping optimize: %s" % k
+                print("Skipping optimize: %s" % k)
                 continue
             
             if k == "nintervals":
@@ -1554,7 +1585,7 @@ class Optimizer(object):
         
         if not self.mls:
             self.tests = {}
-            print " -- No tests was performed. -- "
+            print(" -- No tests was performed. -- ")
             return
         
         if plot:
@@ -1614,7 +1645,7 @@ class Optimizer(object):
         
         xs, ys, eys, _, _, _ = self.median_estimate()
         for x, y, e in zip(xs,ys,eys):
-            print >>filename_or_file, "%f%s%f%s%f" % (x,sep,y,sep,e)
+            print("%f%s%f%s%f" % (x,sep,y,sep,e), file = filename_or_file)
         
         if need_close:
             filename_or_file.close()
