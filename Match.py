@@ -24,6 +24,33 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib import gridspec
 
+class Helpers(object):
+    def __init__(self):
+        raise Exception("This is just a helper class")
+
+    @staticmethod
+    def applyTie(tie_obj, serie_obj, column = 1):
+        if column not in [1,2]:
+            print("Column should be 1 or 2")
+            return
+        
+        if not isinstance(serie_obj, Serie):
+            print("Expect a serie object on serie_obj !")
+            return
+        
+        if not isinstance(tie_obj, Tie):
+            print("Expect a tie object on tie_obj !")
+            return
+        
+        i = 0
+        for t in tie_obj.tie_labels:
+            serie_obj.setTie(t, tie_obj.tie(t)[column-1])
+            i+=1
+        
+        print("Applied %d ties to %s" % (i, serie_obj.label))
+        return i
+
+
 class Tie(object):
     ''' Represents a tie file as loaded by match. Can be created from a file,
     or from none. A tie file is a file with two columns with values related
@@ -40,6 +67,8 @@ class Tie(object):
         if self.filename != None and os.path.isfile(self.filename):
             with open(self.filename) as fio:
                 for line in fio:
+                    line = line.strip()
+                    if len(line) == 0: continue
                     try:
                         s1, v1, s2, v2 = line.strip().split()
                     except ValueError:
@@ -145,6 +174,33 @@ class Serie(object):
         except:
             pass
     
+    def setData(self, xdata, ydata, segmentcode = None):
+        if len(xdata) != len(ydata): raise Exception("Cannot load data with different size")
+        if segmentcode is not None and len(segmentcode) != len(xdata): raise Exception("Cannot load data amd segment size with different size")
+        
+        self.x = np.array(xdata, dtype = np.float)
+        self.y = np.array(ydata, dtype = np.float)
+        self.s = np.array(segmentcode, dtype = np.int) if segmentcode is not None else segmentcode
+        
+        return self
+
+    def setGap(self, gapstart, gapend, force = False):
+        if gapstart >= gapend:
+            raise Exception("gapstart should be smaller than gapend")
+        
+        if not force and (len(self.x[ (self.x >= gapstart) & (self.x <= gapend) ]) > 0):
+            raise Exception("There is data in gap region [x>=gapstart && x<=gapend] !")
+        
+        if self.s is None: self.s = np.zeros(self.x.shape)
+        
+        self.s += 1
+        
+        self.s[ self.x <= gapstart ] -= 1
+        self.s[ self.x >= gapend ] += 1
+        
+	return self
+
+
     @staticmethod
     def read(filename):
         if not os.path.isfile(filename):
@@ -156,6 +212,9 @@ class Serie(object):
             s = None
         else:
             s,x,y = data
+        
+        s = np.array(s, dtype = np.int)
+        
         return x,y,s
     
     def setLimits(self, begin = None, end = None, cut = False):
@@ -169,6 +228,7 @@ class Serie(object):
         self.end   = end
         
         if cut:
+            self.s = self.__window(self.s) if self.s is not None else self.s
             self.y = self.__window(self.y)
             self.x = self.__window(self.x)
             t = {}
@@ -233,6 +293,7 @@ class Serie(object):
             raise Exception("Bad Tie Value = %f, outside of series x-definition range %f to %f." % (value,self.x.min(), self.x.max()))
 
         self._ties[label] = value
+	
         return self
     
     def save(self):
@@ -253,6 +314,7 @@ class Serie(object):
         if os.path.isfile(filename):
             print("Will overwrite filename '%s'." % filename)
         self.__filename = filename
+	
         return self.save()
     
     def normalizeStd(self, respect = True):
@@ -304,30 +366,50 @@ class Serie(object):
         if not self.ismatched or not other.ismatched:
             raise Exception("Both series needs to be Matched !")
         
-        plt.subplot(2,1,1)
-        plt.plot(self.x, self.y, label=self.filename)
+        ax = plt.subplot(2,1,1)
+        for sid in self._gapids():
+            x, y = self._segment(sid)
+            ax.plot(x, y, "-o", label="%s sID: %d" % (self.filename, sid))
         for t in self.ties:
-            plt.axvline(self.tie(t), 0.1, 0.15, color='k')
-        plt.plot(other.xm, other.ym, label=other.filename)
-        plt.axvspan(self.begin, self.end, 0.1, 0.2, alpha=0.3, color='80', label='Used part from %s' % self.filename)
-        plt.legend()
+            ax.axvline(self.tie(t), 0.1, 0.15, color='k')
+        ax.plot(other.xm, other.ym, label="Matched %s" % other.filename)
+        ax.axvspan(self.begin, self.end, 0.1, 0.2, alpha=0.3, color='80', label='Used part from %s' % self.filename)
+        ax.legend(bbox_to_anchor = (1.0, 1.45), ncol = 3)
         
         plt.subplot(2,1,2)
-        plt.plot(self.xm, self.ym, label=self.filename)
+        plt.plot(self.xm, self.ym, label="Matched: %s" % self.filename)
         for t in other.ties:
             plt.axvline(other.tie(t),0.1, 0.15, color='k')
-        plt.plot(other.x, other.y, label=other.filename)
+        plt.plot(other.x, other.y, "-o", label=other.filename)
         plt.axvspan(other.begin, other.end, 0.1, 0.2, alpha=0.3, color='80', label='Used part from %s' % other.filename)
-        plt.legend()
+        plt.legend(bbox_to_anchor = (1.0, -0.15), ncol = 3)
     
-    def plot(self):
+    def _gapids(self):
+        return np.array(self.s[sorted(np.unique(self.s, True)[1])], dtype = np.int) if self.s is not None else [ None ]
+    
+    def _segment(self, sid):
+        if sid is None or ((sid == 0) and (self.s is None)):
+            return self.x, self.y
+        return self.x[(self.s == sid)], self.y[(self.s == sid)]
+    
+    def plot(self, symbols = False):
         '''
         Plot this data serie and its parameters
         '''
         m1 = self.x.min() if self.begin is None else self.begin
         m2 = self.x.max() if self.end is None else self.end
-        plt.axvspan(m1, m2, 0.05, 0.15, alpha=0.75, color="0.6", label='Used Segment')
-        plt.plot(self.x, self.y, label='Series %s [%s]' % (self.label if self.label else '-',self.filename))
+        
+        # Data Span
+        plt.axvspan(m1, m2, 0.05, 0.10, alpha=0.75, color="0.6", label='Used Segment')
+        
+        # Segments
+        c = 'm'
+        for sid in self._gapids():
+            x, y = self._segment(sid)
+            plt.axvspan(x.min(), x.max(), 0.11, 0.15, alpha = 0.75, color = c)
+            c = 'm' if c == 'y' else 'y'
+            plt.plot(x, y, label = 'Series %s [%s] sID %s' % (self.label if self.label else '-', self.filename, sid))
+            if symbols: plt.plot(x, y, 'o')
         
         for v in self.ties.values():
             plt.axvline(v, 0.05, 0.2, color ='k')
@@ -347,14 +429,18 @@ class Serie(object):
             print("            y-Max: %8f / %-8f" % (self.y.max(), self.y_window.max()))
             print("           y-Mean: %8f / %-8f" % (self.y.mean(), self.y_window.mean()))
             print("          y-StdEv: %8f / %-8f" % (self.y.std(), self.y_window.std()))
+            print("x-spac. (min/max): %8.4f / %-8.4f" % (np.min(self.x[1:] - self.x[:-1]), np.max(self.x[1:] - self.x[:-1])))
             print("\nAssociated Information:")
             print("   Begin is: %s and End is: %s" % (self.begin, self.end))
+            print("   Total # of series/gaps: %s" % str(len(set(self.s))) if self.s is not None else "-")
             print("   Total of %d tie points." % (len(self.ties)))
             i = 0
             for k,x in self.ties.items():
                 print("      Tie #%d, Label: %s Position: %s" % (i, k, x))
                 i += 1
             print("")
+	    
+	return self
 
 class MatchLog(object):
     '''
