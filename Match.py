@@ -50,7 +50,6 @@ class Helpers(object):
         print("Applied %d ties to %s" % (i, serie_obj.label))
         return i
 
-
 class Tie(object):
     ''' Represents a tie file as loaded by match. Can be created from a file,
     or from none. A tie file is a file with two columns with values related
@@ -197,8 +196,8 @@ class Serie(object):
         
         self.s[ self.x <= gapstart ] -= 1
         self.s[ self.x >= gapend ] += 1
-        
-	return self
+    
+        return self
 
 
     @staticmethod
@@ -213,7 +212,8 @@ class Serie(object):
         else:
             s,x,y = data
         
-        s = np.array(s, dtype = np.int)
+        if s is not None:
+            s = np.array(s, dtype = np.int)
         
         return x,y,s
     
@@ -293,7 +293,7 @@ class Serie(object):
             raise Exception("Bad Tie Value = %f, outside of series x-definition range %f to %f." % (value,self.x.min(), self.x.max()))
 
         self._ties[label] = value
-	
+
         return self
     
     def save(self):
@@ -314,7 +314,7 @@ class Serie(object):
         if os.path.isfile(filename):
             print("Will overwrite filename '%s'." % filename)
         self.__filename = filename
-	
+
         return self.save()
     
     def normalizeStd(self, respect = True):
@@ -439,8 +439,8 @@ class Serie(object):
                 print("      Tie #%d, Label: %s Position: %s" % (i, k, x))
                 i += 1
             print("")
-	    
-	return self
+        
+        return self
 
 class MatchLog(object):
     '''
