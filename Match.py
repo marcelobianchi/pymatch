@@ -23,6 +23,7 @@ import os, sys, subprocess, psutil
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib import gridspec
+import matplotlib as mpl
 
 class Helpers(object):
     def __init__(self):
@@ -1534,30 +1535,50 @@ class Optimizer(object):
     ''' Utility methods
     '''
     def plot_results(self):
-        xs, mys, eys, rxs, _, reys, = self.median_estimate()
-        _ = np.interp(xs, rxs, reys)
+        mls = []
+        for i,ml in enumerate(self.mls):
+            c = 1.0 - ml.correlation
+            if c > 1: continue
+            mls.append((i,c))
+        mls = sorted(mls, key=lambda tup: tup[1], reverse=True)
         
-        l = self._mcf.run(False, False)
+        # Start Plot
+        fig, (ax1, ax2) = plt.subplots(2, 1, gridspec_kw = {'height_ratios':[1, 3]}, sharex=True, figsize=(6,7.5))
         
-        plt.figure(figsize=(20,10))
+        sa = self._mcf.getSeries(1)
+        sb = self._mcf.getSeries(2)
         
-        # All Fits
-        ##
-        _  = list(map(lambda x: plt.plot(x.x1, x.x2), self.mls))
+        xta, xa, vxa = self.estimate(cm=sa.x)
+        sa.x = xta
         
-        # Best fit
-        ##
-        _ = plt.plot(l.x1, l.x2, '--', lw=22, c="w", zorder=5, alpha=0.7)
+        ax1.plot(sb.x, sb.y,'-', c='red')
+        for s in sa._gapids():
+            x, y = sa._segment(s)
+            ax1.plot(x, y, "-k")
+        ax1.yaxis.set_label_text("$\delta O^{18}$")
         
-        # Average Line
-        ##
-        _ = plt.plot(xs, mys, lw=2, c='k', zorder=10)
-        _ = plt.errorbar(xs, mys, yerr = eys, lw=2, capsize=3, color='k', zorder=10)
-        ## _ = plt.errorbar(xs, mys, xerr = rreys, lw=2, capsize=3, color='k', zorder=10)
+        xs, mys, eys, rxs, rmys, reys = self.median_estimate()
+        ax2.plot(rxs, rmys, lw=2, c='red', zorder=11)
+        ax2.errorbar(rxs[::3], rmys[::3], reys[::3], c='red', elinewidth=2, lw=0, zorder=10)
         
-        plt.figure(figsize=(18,10))
-        l.sa.plotcomp(l.sb)
-        ## _  = plt.legend(loc='upper left', ncol=2, shadow=False, bbox_to_anchor=(1.01, 1.0))
+        cmap = plt.cm.magma
+        norm = mpl.colors.Normalize(0.0, 0.05)
+        c = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+        for iml in mls:
+            ml = self.mls[iml[0]]
+            ax2.plot(ml.x2, ml.x1, c = c.to_rgba(iml[1]), zorder = 1)
+        ax2.yaxis.set_label_text("Depth (km)")
+        ax2.xaxis.set_label_text("Time (ka)")
+        
+        ttt = Tie(self._mcf.tiefile)
+        for label in ttt.tie_labels:
+            tie = ttt.tie(label)
+            ax2.axvline(tie[1],0.02,0.05, ls='--')
+            ax2.axhline(tie[0],0.02, 0.05, ls='--')
+        
+        ax3 = ax2.figure.add_axes([1.0, 0.1, 0.02, 0.3])
+        mpl.colorbar.ColorbarBase(ax3, cmap=cmap, norm=norm, label='1-$\phi$')
+        plt.tight_layout()
         
         return
     
