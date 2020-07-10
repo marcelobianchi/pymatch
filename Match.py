@@ -1147,6 +1147,9 @@ class MatchConfFile(object):
         if len(first) == 0 or len(last) == 0:
             raise Exception("Not enough values for pair")
         
+        first = list(first)
+        last  = list(last)
+        
         items = []
         
         first.reverse()
@@ -1171,6 +1174,7 @@ class MatchConfFile(object):
                 if item not in items: items.append(item)
         
         self.speeds = items
+        return self
     
     def setSeries(self, which, filename, begin = None, end = None, nintervals = None):
         if not os.path.isfile(filename):
